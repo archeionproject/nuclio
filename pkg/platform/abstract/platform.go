@@ -48,7 +48,7 @@ import (
 	"github.com/nuclio/nuclio-sdk-go"
 	"github.com/samber/lo"
 	autosv2 "k8s.io/api/autoscaling/v2"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -2123,4 +2123,8 @@ func (ap *Platform) enrichEnvVars(config *functionconfig.Config) {
 			}
 		}
 	}
+}
+
+func (p *Platform) GetStackConfig() *platform.StackConfig {
+	return nil
 }

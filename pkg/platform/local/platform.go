@@ -63,6 +63,8 @@ type Platform struct {
 	projectsClient project.Client
 
 	storeImageName string
+
+	StackConfig platform.StackConfig
 }
 
 const Mib = 1048576
@@ -83,6 +85,34 @@ func NewProjectsClient(platform *Platform, platformConfiguration *platformconfig
 	}
 
 	return localProjectsClient, nil
+}
+
+func detectComposeStack(dockerClient dockerclient.Client, logger logger.Logger) *platform.StackConfig {
+	hostname, err := os.Hostname()
+	if err != nil {
+		logger.WarnWith("Failed to get hostname for compose detection", "err", err)
+		return nil
+	}
+	containers, err := dockerClient.GetContainers(&dockerclient.GetContainerOptions{
+		ID: hostname,
+	})
+	if err != nil || len(containers) == 0 {
+		logger.WarnWith("Failed to get self container for compose detection", "err", err)
+		return nil
+	}
+	labels := containers[0].Config.Labels
+	project, hasProject := labels["com.docker.compose.project"]
+	if hasProject {
+		// Compose default network is <project>_default
+		return &platform.StackConfig{
+			Name:           project,
+			Network:        project + "_default",
+			ConfigFiles:    labels["com.docker.compose.project.config_files"],
+			WorkingDir:     labels["com.docker.compose.project.working_dir"],
+			ComposeVersion: labels["com.docker.compose.version"],
+		}
+	}
+	return nil
 }
 
 // NewPlatform instantiates a new local platform
@@ -149,6 +179,13 @@ func NewPlatform(ctx context.Context,
 				newPlatform.ValidateFunctionContainersHealthiness(ctx)
 			}
 		}(newPlatform)
+	}
+
+	if newPlatform.dockerClient != nil {
+		stackConfig := detectComposeStack(newPlatform.dockerClient, newPlatform.Logger)
+		if stackConfig != nil {
+			newPlatform.StackConfig = *stackConfig
+		}
 	}
 	return newPlatform, nil
 }
@@ -1390,6 +1427,18 @@ func (p *Platform) compileDeployFunctionLabels(createFunctionOptions *platform.C
 	if marshalledAnnotations != nil {
 		labels["nuclio.io/annotations"] = string(marshalledAnnotations)
 	}
+
+	if p.StackConfig.Name != "" {
+		labels["com.docker.compose.project"] = p.StackConfig.Name
+		labels["com.docker.compose.service"] = p.GetFunctionContainerName(&createFunctionOptions.FunctionConfig)
+		//labels["com.docker.compose.image"] = createFunctionOptions.FunctionConfig.Spec.Image
+		//labels["com.docker.compose.oneoff"] = "false"
+		labels["com.docker.compose.project.config_files"] = p.StackConfig.ConfigFiles
+		labels["com.docker.compose.project.working_dir"] = p.StackConfig.WorkingDir
+		labels["com.docker.compose.version"] = p.StackConfig.ComposeVersion
+
+	}
+
 	return labels
 }
 
@@ -1461,6 +1510,10 @@ func (p *Platform) resolveFunctionNetwork(createFunctionOptions *platform.Create
 		return functionPlatformConfiguration.Network, nil
 	}
 
+	if p.StackConfig.Network != "" {
+		return p.StackConfig.Network, nil
+	}
+
 	return p.Config.Local.DefaultFunctionContainerNetworkName, nil
 }
 
@@ -1500,4 +1553,11 @@ func (p *Platform) resolveFunctionSpecRequestMemory(functionSpec functionconfig.
 		)
 	}
 	return ""
+}
+
+func (p *Platform) GetStackConfig() *platform.StackConfig {
+	if p.StackConfig.Name != "" {
+		return &p.StackConfig
+	}
+	return nil
 }

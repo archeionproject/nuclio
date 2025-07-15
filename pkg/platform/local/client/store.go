@@ -440,6 +440,16 @@ func (s *Store) runCommand(env map[string]string, format string, args ...interfa
 			return "", "", errors.Wrapf(err, "Failed to execute command: %s", command)
 		}
 
+		labels := make(map[string]string)
+		if s.platform.GetStackConfig() != nil {
+			labels["com.docker.compose.project"] = s.platform.GetStackConfig().Name
+			labels["com.docker.compose.service"] = s.imageName
+			//labels["com.docker.compose.image"] = createFunctionOptions.FunctionConfig.Spec.Image
+			//labels["com.docker.compose.oneoff"] = "false"
+			labels["com.docker.compose.project.config_files"] = s.platform.GetStackConfig().ConfigFiles
+			labels["com.docker.compose.project.working_dir"] = s.platform.GetStackConfig().WorkingDir
+			labels["com.docker.compose.version"] = s.platform.GetStackConfig().ComposeVersion
+		}
 		// run a container that simply volumizes the volume with the storage and sleeps for 6 hours
 		// using alpine mirrored to gcr.io/iguazio for stability
 		if _, err := s.dockerClient.RunContainer(s.imageName, &dockerclient.RunOptions{
@@ -449,6 +459,7 @@ func (s *Store) runCommand(env map[string]string, format string, args ...interfa
 			Stdout:           &commandStdout,
 			ImageMayNotExist: true,
 			ContainerName:    containerName,
+			Labels:           labels,
 		}); err != nil &&
 			!strings.Contains(err.Error(), "is already in use by container") {
 

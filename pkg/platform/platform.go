@@ -29,6 +29,14 @@ import (
 	"github.com/nuclio/nuclio/pkg/processor/build/runtime"
 )
 
+type StackConfig struct {
+	Name           string
+	Network        string
+	ConfigFiles    string
+	WorkingDir     string
+	ComposeVersion string
+}
+
 type HealthCheckMode string
 
 const (
@@ -245,4 +253,7 @@ type Platform interface {
 
 	// QueryOPAFunctionPermissions queries opa permissions for a certain function
 	QueryOPAFunctionPermissions(projectName, functionName string, action opa.Action, permissionOptions *opa.PermissionOptions) (bool, error)
+
+	// Get docker compose configuration if any
+	GetStackConfig() *StackConfig
 }

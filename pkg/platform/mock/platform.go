@@ -411,3 +411,8 @@ func (mp *Platform) QueryOPAFunctionEventPermissions(projectName,
 	args := mp.Called(projectName, functionName, functionEventName, action, permissionOptions)
 	return args.Get(0).(bool), args.Error(1)
 }
+
+func (p *Platform) GetStackConfig() *platform.StackConfig {
+
+	return nil
+}

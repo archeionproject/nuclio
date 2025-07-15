@@ -47,9 +47,9 @@ import (
 	"github.com/nuclio/errors"
 	"github.com/nuclio/logger"
 	"github.com/nuclio/nuclio-sdk-go"
-	"github.com/nuclio/zap"
+	nucliozap "github.com/nuclio/zap"
 	"github.com/samber/lo"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -2341,6 +2341,10 @@ func (p *Platform) getAPIGatewayUpstreamFunctions(ctx context.Context,
 
 func (p *Platform) getProjectCacheKey(projectMeta platform.ProjectMeta, owner string) string {
 	return fmt.Sprintf("%s/%s", projectMeta.Name, owner)
+}
+
+func (p *Platform) GetStackConfig() *platform.StackConfig {
+	return nil
 }
 
 // validateProbeSpec validates the probe spec with the given probe type
