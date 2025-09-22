@@ -95,6 +95,13 @@ type GetContainerOptions struct {
 	ID      string
 }
 
+// GetServiceOptions are options for container search
+type GetServiceOptions struct {
+	Name   string
+	Labels map[string]string
+	ID     string
+}
+
 // Container contains response of Engine API:
 // GET "/containers/{name:.*}/json"
 type Container struct {
@@ -120,6 +127,57 @@ type Container struct {
 	Mounts          []MountPoint
 	Config          *Config
 	NetworkSettings *NetworkSettings
+}
+
+type CreateServiceOptions struct {
+	*RunOptions
+	Configs []ConfigMount
+}
+type Service struct {
+	ID              string
+	CreatedAt       string
+	UpdatedAt       string
+	DesiredReplicas int `json:"-"`
+	RunningReplicas int `json:"-"`
+	Spec            *ServiceSpec
+	Endpoint        *Endpoint
+}
+
+type ServiceSpec struct {
+	Name         string
+	Labels       map[string]string
+	TaskTemplate *TaskTemplate
+	EndpointSpec *EndpointSpec
+}
+
+type TaskTemplate struct {
+	ContainerSpec *ContainerSpec
+}
+
+type ContainerSpec struct {
+	Image string
+	Env   []string
+}
+
+type EndpointSpec struct {
+	Ports []PortConfig
+}
+
+type PortConfig struct {
+	Protocol      string
+	TargetPort    int
+	PublishedPort int
+	PublishMode   string
+}
+
+type Endpoint struct {
+	Ports      []PortConfig
+	VirtualIPs []VirtualIP
+}
+
+type VirtualIP struct {
+	NetworkID string
+	Addr      string
 }
 
 // ContainerState stores container's running state
@@ -152,6 +210,14 @@ type HealthLog struct {
 	End      string
 	ExitCode int
 	Output   string
+}
+
+type ConfigMount struct {
+	Source string
+	Target string
+	UID    string
+	GID    string
+	Mode   uint32
 }
 
 // MountPoint represents a mount point configuration inside the container.

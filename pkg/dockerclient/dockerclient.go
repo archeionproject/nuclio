@@ -106,4 +106,30 @@ type Client interface {
 
 	// GetContainerLogStream return container log stream
 	GetContainerLogStream(ctx context.Context, containerID string, logOptions *ContainerLogsOptions) (io.ReadCloser, error)
+
+	// Docker swarm services
+
+	// CreateService creates a docker swarm service
+	CreateService(imageName string, runOptions *CreateServiceOptions) (string, error)
+
+	// RemoveService removes a docker swarm service
+	RemoveService(serviceID string) error
+
+	// StopService stops a docker swarm service
+	StopService(serviceID string) error
+
+	// StartService starts a docker swarm service
+	StartService(serviceID string) error
+
+	// AwaitContainerHealth blocks until the given container is healthy or the timeout passes
+	AwaitServiceHealth(serviceID string, timeout *time.Duration) error
+
+	// GetServices returns a list of services which match a certain criteria
+	GetServices(*GetServiceOptions) ([]Service, error)
+
+	GetServicePort(service *Service, boundPort int) (int, error)
+
+	CreateConfig(name string, data string) (string, error)
+
+	RemoveConfig(name string) (string, error)
 }

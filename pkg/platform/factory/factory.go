@@ -24,6 +24,7 @@ import (
 	"github.com/nuclio/nuclio/pkg/platform"
 	"github.com/nuclio/nuclio/pkg/platform/kube"
 	"github.com/nuclio/nuclio/pkg/platform/local"
+	"github.com/nuclio/nuclio/pkg/platform/swarm"
 	"github.com/nuclio/nuclio/pkg/platformconfig"
 
 	"github.com/nuclio/errors"
@@ -59,7 +60,8 @@ func CreatePlatform(ctx context.Context,
 
 	case common.KubePlatformName:
 		newPlatform, err = kube.NewPlatform(ctx, parentLogger, platformConfiguration, defaultNamespace, defaultRunRegistryURL)
-
+	case common.SwarmPlatformName:
+		newPlatform, err = swarm.NewPlatform(ctx, parentLogger, platformConfiguration, defaultNamespace)
 	default:
 
 		// should not get here. see how GetPlatformByType ensures platformType can be only one of the above
@@ -91,6 +93,8 @@ func GetPlatformByType(platformType string,
 
 	case common.KubePlatformName:
 		return common.KubePlatformName, nil
+	case common.SwarmPlatformName:
+		return common.SwarmPlatformName, nil
 
 	case common.AutoPlatformName:
 
@@ -99,6 +103,7 @@ func GetPlatformByType(platformType string,
 			common.IsInKubernetesCluster() {
 			return common.KubePlatformName, nil
 		}
+
 		return common.LocalPlatformName, nil
 
 	default:

@@ -105,6 +105,7 @@ func (sr *ShellRunner) Run(runOptions *RunOptions, format string, vars ...interf
 		runResult.ExitCode = exitCode
 		if !runOptions.SkipLogOnFailure {
 			sr.logger.DebugWith("Failed to execute command",
+				"command", redactedCommand,
 				"output", runResult.Output,
 				"stderr", runResult.Stderr,
 				"exitCode", runResult.ExitCode,

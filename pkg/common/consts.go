@@ -54,6 +54,7 @@ const KubernetesDomainLevelMaxLength = 63
 const (
 	AutoPlatformName  = "auto"
 	KubePlatformName  = "kube"
+	SwarmPlatformName = "swarm"
 	LocalPlatformName = "local"
 )
 

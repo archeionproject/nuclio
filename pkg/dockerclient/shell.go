@@ -20,9 +20,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -838,11 +840,508 @@ func (c *ShellClient) Load(inPath string) error {
 	return err
 }
 
+func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceOptions) (string, error) {
+	c.logger.DebugWith("Running service", "imageName", imageName, "runOptions", runOptions)
+
+	//TODO: refactor this part to be shared with docker run
+	//TODO: validate name lenght (max 63 chars) it should follow DNS-rules.
+	// validate the given run options against malicious contents
+	if err := c.validateRunOptions(imageName, runOptions.RunOptions); err != nil {
+		return "", errors.Wrap(err, "Invalid run options passed")
+	}
+
+	var dockerArguments []string
+
+	for localPort, dockerPort := range runOptions.Ports {
+		switch localPort {
+		case RunOptionsRandomPort:
+			dockerArguments = append(dockerArguments, fmt.Sprintf("--publish '%d'", dockerPort))
+		case RunOptionsNoPort:
+			continue
+		default:
+			dockerArguments = append(dockerArguments, fmt.Sprintf("--publish '%d:%d'", localPort, dockerPort))
+		}
+	}
+
+	// TODO: restart policies are different for docker swarm
+	if runOptions.RestartPolicy != nil && runOptions.RestartPolicy.Name != RestartPolicyNameNo {
+
+		// sanity check
+		// https://docs.docker.com/engine/reference/run/#restart-policies---restart
+		// combining --restart (restart policy) with the --rm (clean up) flag results in an error.
+		if runOptions.Remove {
+			return "", errors.Errorf("Cannot combine restart policy with container removal")
+		}
+		restartMaxRetries := runOptions.RestartPolicy.MaximumRetryCount
+		restartPolicy := string(runOptions.RestartPolicy.Name)
+		if runOptions.RestartPolicy.Name == RestartPolicyNameOnFailure && restartMaxRetries >= 0 {
+			restartPolicy += fmt.Sprintf(":%d", restartMaxRetries)
+		}
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--restart %s", common.Quote(restartPolicy)))
+	}
+
+	if !runOptions.Attach {
+		dockerArguments = append(dockerArguments, "--detach")
+	}
+
+	/*
+		CPUs, Memory and GPUs are handled differently in Docker swarm:
+
+		--cpus=1.5 means that the container will have 1 and half cpus dedicated to
+		it. -> in docker swarm we have --reserve-cpu
+		--memory=2g means the maximum amount of memory that the container can use.
+		-> in swarm we have --memory-limit
+
+		GPUs are handled differently via '--generic-resource' after configuring
+		the Docker daemon on the swarm nodes, not with a simple config flag. Example:
+		--generic-resource "NVIDIA-GPU=1"
+	*/
+	if runOptions.GPUs != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--gpus %s", common.Quote(runOptions.GPUs)))
+	}
+
+	if runOptions.Memory != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--memory %s", runOptions.Memory))
+	}
+
+	if runOptions.CPUs != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--cpus %s", runOptions.CPUs))
+	}
+
+	if runOptions.Remove {
+		dockerArguments = append(dockerArguments, "--rm")
+	}
+
+	// This should be mapped to service name ?
+	if runOptions.ContainerName != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--name %s", common.Quote(runOptions.ContainerName)))
+	}
+
+	if runOptions.Network != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--net %s", common.Quote(runOptions.Network)))
+	}
+
+	if runOptions.Labels != nil {
+		for labelName, labelValue := range runOptions.Labels {
+			dockerArguments = append(dockerArguments,
+				fmt.Sprintf("--label '%s'='%s'", labelName, c.replaceSingleQuotes(labelValue)))
+		}
+	}
+
+	if runOptions.Env != nil {
+		for envName, envValue := range runOptions.Env {
+			dockerArguments = append(dockerArguments, fmt.Sprintf("--env '%s'='%s'", envName, envValue))
+		}
+	}
+
+	if runOptions.Volumes != nil {
+		for volumeHostPath, volumeContainerPath := range runOptions.Volumes {
+			dockerArguments = append(dockerArguments,
+				fmt.Sprintf("--volume '%s:%s'", volumeHostPath, volumeContainerPath))
+		}
+	}
+
+	if len(runOptions.MountPoints) > 0 {
+		for _, mountPoint := range runOptions.MountPoints {
+			mountType := ""
+			if mountPoint.Type != "" {
+
+				// e.g: type=bind,
+				mountType = fmt.Sprintf("type=%s,", mountPoint.Type)
+			}
+			readonly := ""
+			if !mountPoint.RW {
+				readonly = ",readonly"
+			}
+			mount := fmt.Sprintf("%ssource=%s,destination=%s%s",
+				mountType,
+				mountPoint.Source,
+				mountPoint.Destination,
+				readonly)
+			dockerArguments = append(dockerArguments,
+				fmt.Sprintf("--mount %s", common.Quote(mount)))
+		}
+	}
+
+	if len(runOptions.Configs) > 0 {
+		for _, config := range runOptions.Configs {
+			configStr := fmt.Sprintf("source=%s,target=%s", config.Source, config.Target)
+			dockerArguments = append(dockerArguments,
+				fmt.Sprintf("--config %s", common.Quote(configStr)))
+			//TODO: add uid,gid,mode
+		}
+	}
+
+	for _, device := range runOptions.Devices {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--device %s", common.Quote(device)))
+	}
+
+	if runOptions.RunAsUser != nil || runOptions.RunAsGroup != nil {
+		userStr := ""
+		if runOptions.RunAsUser != nil {
+			userStr += fmt.Sprintf("%d", *runOptions.RunAsUser)
+		}
+		if runOptions.RunAsGroup != nil {
+			userStr += fmt.Sprintf(":%d", *runOptions.RunAsGroup)
+		}
+
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--user %s", common.Quote(userStr)))
+	}
+
+	if runOptions.FSGroup != nil {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--group-add '%d'", *runOptions.FSGroup))
+	}
+
+	runResult, err := c.cmdRunner.Run(
+		&cmdrunner.RunOptions{LogRedactions: c.redactedValues},
+		"docker service create -d %s %s %s",
+		strings.Join(dockerArguments, " "),
+		imageName,
+		runOptions.Command)
+
+	if err != nil {
+		c.logger.WarnWith("Failed to create the service",
+			"err", err,
+			"stdout", runResult.Output,
+			"stderr", runResult.Stderr)
+
+		return "", err
+	}
+
+	// if user requested, set stdout / stderr
+	if runOptions.Stdout != nil {
+		*runOptions.Stdout = runResult.Output
+	}
+
+	if runOptions.Stderr != nil {
+		*runOptions.Stderr = runResult.Stderr
+	}
+
+	stdoutLines := strings.Split(runResult.Output, "\n")
+	lastStdoutLine := c.getLastNonEmptyLine(stdoutLines, 0)
+
+	// make sure there are no spaces in the ID, as normally we expect this command to only produce container ID
+	if strings.Contains(lastStdoutLine, " ") {
+
+		// if the image didn't exist prior to calling RunContainer, it will be pulled implicitly which will
+		// cause additional information to be outputted. if runOptions.ImageMayNotExist is false,
+		// this will result in an error.
+		if !runOptions.ImageMayNotExist {
+			return "", fmt.Errorf("Output from docker command includes more than just ID: %s", lastStdoutLine)
+		}
+
+		// if the implicit image pull was allowed and actually happened, the container ID will appear in the
+		// second to last line ¯\_(ツ)_/¯
+		lastStdoutLine = c.getLastNonEmptyLine(stdoutLines, 1)
+	}
+
+	return lastStdoutLine, err
+}
+
+// RemoveContainer removes a container given a container ID
+func (c *ShellClient) RemoveService(serviceID string) error {
+	c.logger.DebugWith("Removing service", "serviceID", serviceID)
+
+	// serviceID is ID or name
+	if !containerIDRegex.MatchString(serviceID) && !restrictedNameRegex.MatchString(serviceID) {
+		return errors.New("Invalid service ID name in remove service")
+	}
+
+	_, err := c.runCommand(nil, "docker service rm %s", serviceID)
+	return err
+}
+
+func (c *ShellClient) StopService(serviceID string) error {
+	c.logger.DebugWith("Stop service", "serviceID", serviceID)
+
+	// serviceID is ID or name
+	if !containerIDRegex.MatchString(serviceID) && !restrictedNameRegex.MatchString(serviceID) {
+		return errors.New("Invalid service ID name in stop service")
+	}
+
+	_, err := c.runCommand(nil, "docker service scale -d %s=0", serviceID)
+	return err
+}
+
+func (c *ShellClient) StartService(serviceID string) error {
+	c.logger.DebugWith("Start service", "serviceID", serviceID)
+
+	// serviceID is ID or name
+	if !containerIDRegex.MatchString(serviceID) && !restrictedNameRegex.MatchString(serviceID) {
+		return errors.New("Invalid service ID name in start service")
+	}
+
+	_, err := c.runCommand(nil, "docker service scale -d %s=1", serviceID)
+	return err
+}
+
+// AwaitServiceHealth blocks until the given container is healthy or the timeout passes
+func (c *ShellClient) AwaitServiceHealth(serviceID string, timeout *time.Duration) error {
+	c.logger.DebugWith("Awaiting service health", "serviceID", serviceID, "timeout", timeout)
+
+	if !containerIDRegex.MatchString(serviceID) && !restrictedNameRegex.MatchString(serviceID) {
+		return errors.New("Invalid service ID to await health for")
+	}
+
+	timedOut := false
+
+	containerHealthy := make(chan error, 1)
+	var timeoutChan <-chan time.Time
+
+	// if no timeout is given, create a channel that we'll never send on
+	if timeout == nil {
+		timeoutChan = make(<-chan time.Time, 1)
+	} else {
+		timeoutChan = time.After(*timeout)
+	}
+
+	go func() {
+
+		// start with a small interval between health checks, increasing it gradually
+		inspectInterval := 100 * time.Millisecond
+
+		for !timedOut {
+			services, err := c.GetServices(&GetServiceOptions{
+				ID: serviceID,
+			})
+			if err == nil && len(services) > 0 {
+				service := services[0]
+
+				if service.DesiredReplicas == service.RunningReplicas {
+					if service.RunningReplicas == 0 {
+						containerHealthy <- errors.Errorf("Service has %d Desired running replicas and %d tasks are running, cannot be healthy", service.DesiredReplicas, service.RunningReplicas)
+						return
+					}
+
+					containerHealthy <- nil
+					return
+				}
+
+				// wait a bit before retrying
+				c.logger.DebugWith("Service not healthy yet, retrying soon",
+					"timeout", timeout,
+					"containerID", serviceID,
+					"desired replicas", service.DesiredReplicas,
+					"running replicas", service.RunningReplicas,
+					"nextCheckIn", inspectInterval)
+			}
+
+			time.Sleep(inspectInterval)
+
+			// increase the interval up to a cap
+			if inspectInterval < 800*time.Millisecond {
+				inspectInterval *= 2
+			}
+		}
+	}()
+
+	// wait for either the container to be healthy or the timeout
+	select {
+	case err := <-containerHealthy:
+		if err != nil {
+			return errors.Wrapf(err, "Service %s is not healthy", serviceID)
+		}
+		c.logger.DebugWith("Service is healthy", "serviceID", serviceID)
+	case <-timeoutChan:
+		timedOut = true
+
+		/*
+			TODO: we should get logs from service
+			containerLogs, err := c.GetContainerLogs(serviceID)
+			if err != nil {
+				c.logger.ErrorWith("Container wasn't healthy within timeout (failed to get logs)",
+					"containerID", serviceID,
+					"timeout", timeout,
+					"err", err)
+			} else {
+				c.logger.WarnWith("Container wasn't healthy within timeout",
+					"containerID", serviceID,
+					"timeout", timeout,
+					"logs", containerLogs)
+			}
+		*/
+		return errors.New("Service wasn't healthy in time")
+	}
+
+	return nil
+}
+
+// GetContainers returns a list of container IDs which match a certain criteria
+func (c *ShellClient) GetServices(options *GetServiceOptions) ([]Service, error) {
+	c.logger.DebugWith("Getting services", "options", options)
+
+	if err := c.validateGetServiceOptions(options); err != nil {
+		return nil, errors.Wrap(err, "Invalid get container options passed")
+	}
+
+	nameFilterArgument := ""
+	if options.Name != "" {
+		nameFilterArgument = fmt.Sprintf(`--filter "name=%s" `, options.Name)
+	}
+
+	idFilterArgument := ""
+	if options.ID != "" {
+		idFilterArgument = fmt.Sprintf(`--filter "id=%s"`, options.ID)
+	}
+
+	labelFilterArgument := ""
+	for labelName, labelValue := range options.Labels {
+		labelFilterArgument += fmt.Sprintf(`--filter "label=%s=%s" `,
+			labelName,
+			labelValue)
+	}
+
+	runResult, err := c.runCommand(nil,
+		"docker service ls --format json %s %s %s",
+		idFilterArgument,
+		nameFilterArgument,
+		labelFilterArgument)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to get services")
+	}
+
+	listOfServicesJson := runResult.Output
+	if len(listOfServicesJson) == 0 {
+		return []Service{}, nil
+	}
+
+	serviceLines := strings.Split(strings.TrimSpace(listOfServicesJson), "\n")
+	type replicas struct {
+		desired int
+		running int
+	}
+
+	idReplicasMap := make(map[string]replicas)
+
+	for _, line := range serviceLines {
+		if line == "" {
+			continue
+		}
+		var svc struct {
+			ID       string `json:"ID"`
+			Replicas string `json:"Replicas"`
+		}
+
+		if err := json.Unmarshal([]byte(line), &svc); err != nil {
+			return nil, errors.Wrapf(err, "Failed to parse service line: %s", line)
+		}
+
+		// Replicas is in the format "1/1", so split and take the first part
+		replicaParts := strings.Split(svc.Replicas, "/")
+
+		if len(replicaParts) != 2 {
+			return nil, errors.Errorf("Failed to parse service line: %s", line)
+		}
+
+		running, _ := strconv.Atoi(replicaParts[0])
+		desired, _ := strconv.Atoi(replicaParts[1])
+		idReplicasMap[svc.ID] = replicas{desired: desired, running: running}
+
+	}
+
+	if len(idReplicasMap) == 0 {
+		return []Service{}, nil
+	}
+
+	runResult, err = c.runCommand(nil,
+		"docker service inspect %s",
+		strings.Join(slices.Collect(maps.Keys(idReplicasMap)), " "))
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to inspect containers")
+	}
+
+	serviceInfoString := runResult.Output
+
+	var serviceInfo []Service
+
+	// parse the result
+	if err := json.Unmarshal([]byte(serviceInfoString), &serviceInfo); err != nil {
+		return nil, errors.Wrap(err, "Failed to parse inspect response")
+	}
+
+	for i := range serviceInfo {
+		id := serviceInfo[i].ID[:12]
+		serviceInfo[i].RunningReplicas = idReplicasMap[id].running
+		serviceInfo[i].DesiredReplicas = idReplicasMap[id].desired
+	}
+
+	return serviceInfo, nil
+}
+
+func (c *ShellClient) GetServicePort(service *Service, boundPort int) (int, error) {
+	portBindings := service.Endpoint.Ports
+
+	for _, portBinding := range portBindings {
+		if int(portBinding.TargetPort) == boundPort && strings.ToLower(portBinding.Protocol) == "tcp" {
+			if portBinding.PublishedPort != 0 {
+				return int(portBinding.PublishedPort), nil
+			}
+		}
+	}
+	// function might failed during deploying and did not assign a port
+	return 0, nil
+}
+
+func (c *ShellClient) CreateConfig(name string, data string) (string, error) {
+	c.logger.DebugWith("Creating config", "name", name)
+
+	// validate the given create config options against malicious contents
+	if !restrictedNameRegex.MatchString(name) {
+		return "", errors.New("Invalid config name to create")
+	}
+
+	runResult, err := c.runCommand(nil, `echo %s | docker config create %s -`, common.Quote(data), name)
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to create config")
+	}
+
+	stdoutLines := strings.Split(runResult.Output, "\n")
+	lastStdoutLine := c.getLastNonEmptyLine(stdoutLines, 0)
+
+	// make sure there are no spaces in the ID, as normally we expect this command to only produce config ID
+	if strings.Contains(lastStdoutLine, " ") {
+		return "", fmt.Errorf("output from docker command includes more than just ID: %s", lastStdoutLine)
+	}
+
+	return lastStdoutLine, nil
+
+}
+
+func (c *ShellClient) RemoveConfig(name string) (string, error) {
+	c.logger.DebugWith("Removing config", "name", name)
+
+	// validate the given create config options against malicious contents
+	if !restrictedNameRegex.MatchString(name) {
+		return "", errors.New("Invalid config name to create")
+	}
+
+	runResult, err := c.runCommand(nil, `docker config rm %s`, name)
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to create config")
+	}
+
+	stdoutLines := strings.Split(runResult.Output, "\n")
+	lastStdoutLine := c.getLastNonEmptyLine(stdoutLines, 0)
+
+	// make sure there are no spaces in the ID, as normally we expect this command to only produce config ID
+	if strings.Contains(lastStdoutLine, " ") {
+		return "", fmt.Errorf("output from docker command includes more than just ID: %s", lastStdoutLine)
+	}
+
+	return lastStdoutLine, nil
+}
+
 func (c *ShellClient) GetVersion(quiet bool) (string, error) {
 	runOptions := &cmdrunner.RunOptions{
 		LogOnlyOnFailure: quiet,
 	}
-	output, err := c.runCommand(runOptions, `docker version --format "{{json .}}"`)
+	output, err := c.runCommand(runOptions, `echo $PATH`)
+	if err != nil {
+		return "", errors.Wrap(err, "Failed to get docker version")
+	}
+	c.logger.DebugWith("Docker PATH", "path", output.Output)
+	output, err = c.runCommand(runOptions, `docker version --format "{{json .}}"`)
 	if err != nil {
 		return "", errors.Wrap(err, "Failed to get docker version")
 	}
@@ -1163,6 +1662,18 @@ func (c *ShellClient) validateGetContainerOptions(options *GetContainerOptions) 
 
 	if options.ID != "" && !containerIDRegex.MatchString(options.ID) {
 		return errors.New("Invalid container ID in get container options")
+	}
+
+	return nil
+}
+
+func (c *ShellClient) validateGetServiceOptions(options *GetServiceOptions) error {
+	if options.Name != "" && !restrictedNameRegex.MatchString(options.Name) {
+		return errors.New("Invalid service name in get service options")
+	}
+
+	if options.ID != "" && !containerIDRegex.MatchString(options.ID) {
+		return errors.New("Invalid service ID in get service options")
 	}
 
 	return nil
