@@ -131,7 +131,8 @@ type Container struct {
 
 type CreateServiceOptions struct {
 	*RunOptions
-	Configs []ConfigMount
+	WithRegistryAuth bool
+	Configs          []ConfigMount
 }
 type Service struct {
 	ID              string

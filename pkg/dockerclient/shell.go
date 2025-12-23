@@ -855,7 +855,7 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 	for localPort, dockerPort := range runOptions.Ports {
 		switch localPort {
 		case RunOptionsRandomPort:
-			dockerArguments = append(dockerArguments, fmt.Sprintf("--publish '%d'", dockerPort))
+			dockerArguments = append(dockerArguments, fmt.Sprintf("--publish target='%d'", dockerPort))
 		case RunOptionsNoPort:
 			continue
 		default:
@@ -918,7 +918,7 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 	}
 
 	if runOptions.Network != "" {
-		dockerArguments = append(dockerArguments, fmt.Sprintf("--net %s", common.Quote(runOptions.Network)))
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--network %s", common.Quote(runOptions.Network)))
 	}
 
 	if runOptions.Labels != nil {
@@ -990,6 +990,10 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 
 	if runOptions.FSGroup != nil {
 		dockerArguments = append(dockerArguments, fmt.Sprintf("--group-add '%d'", *runOptions.FSGroup))
+	}
+
+	if runOptions.WithRegistryAuth {
+		dockerArguments = append(dockerArguments, "--with-registry-auth")
 	}
 
 	runResult, err := c.cmdRunner.Run(
