@@ -52,7 +52,7 @@ import (
 	"github.com/nuclio/errors"
 	"github.com/nuclio/logger"
 	"github.com/nuclio/nuclio-sdk-go"
-	"github.com/nuclio/opa-client"
+	opaclient "github.com/nuclio/opa-client"
 	nucliozap "github.com/nuclio/zap"
 	"sigs.k8s.io/yaml"
 )
