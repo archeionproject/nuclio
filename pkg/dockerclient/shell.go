@@ -1318,7 +1318,7 @@ func (c *ShellClient) RemoveConfig(name string) (string, error) {
 
 	runResult, err := c.runCommand(nil, `docker config rm %s`, name)
 	if err != nil {
-		return "", errors.Wrap(err, "Failed to create config")
+		return "", errors.Wrap(err, "Failed to remove config")
 	}
 
 	stdoutLines := strings.Split(runResult.Output, "\n")
