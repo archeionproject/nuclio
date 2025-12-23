@@ -1016,8 +1016,9 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 	if !createFunctionOptions.FunctionConfig.Spec.Disable {
 		serviceID, err = p.DockerClient.CreateService(createFunctionOptions.FunctionConfig.Spec.Image,
 			&dockerclient.CreateServiceOptions{
-				RunOptions: runContainerOptions,
-				Configs:    configMounts,
+				RunOptions:       runContainerOptions,
+				WithRegistryAuth: true,
+				Configs:          configMounts,
 			})
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to create Swarm Service")
@@ -1062,18 +1063,44 @@ func (p *Platform) delete(ctx context.Context, deleteFunctionOptions *platform.D
 	}
 
 	servicesInfo, err := p.DockerClient.GetServices(getServiceOptions)
-	if err != nil || len(servicesInfo) != 1 {
+	if err != nil {
 		return errors.Wrap(err, "Failed to get function service")
 	}
 
+	if len(servicesInfo) == 0 {
+		p.Logger.DebugWithCtx(ctx, "Function service not found, assuming already deleted")
+		// TODO: we assume that configs were deleted previously
+		return nil
+	}
+
 	if err := p.DockerClient.RemoveService(servicesInfo[0].ID); err != nil {
-		return errors.Wrapf(err, "Failed to remove service %s", servicesInfo[0].ID)
+		// we don't get enough data to propery check if it is a not found
+		// we do a full seriliazation as last resort
+		// TODO: correctly map docker errors to GO errors
+		fullErrorChain := fmt.Sprintf("%+v", err)
+		if !strings.Contains(fullErrorChain, "code = NotFound") && !strings.Contains(fullErrorChain, "not found") {
+			return errors.Wrapf(err, "Failed to delete a function service %s", servicesInfo[0].ID)
+		}
+
+		p.Logger.WarnWith("Failed to remove serivce because it was not found",
+			"service.ID", servicesInfo[0].ID,
+			"error", err.Error())
 	}
 
 	functionConfigName := p.GetFunctionConfigName(&deleteFunctionOptions.FunctionConfig)
 	p.Logger.DebugWithCtx(ctx, "Removing function config", "functionConfigName", functionConfigName)
 	if _, err := p.DockerClient.RemoveConfig(functionConfigName); err != nil {
-		return errors.Wrapf(err, "Failed to delete a function config %s", functionConfigName)
+		// we don't get enough data to propery check if it is a not found
+		// we do a full seriliazation as last resort
+		// TODO: correctly map docker errors to GO errors
+		fullErrorChain := fmt.Sprintf("%+v", err)
+		if !strings.Contains(fullErrorChain, "code = NotFound") && !strings.Contains(fullErrorChain, "not found") {
+			return errors.Wrapf(err, "Failed to delete a function config %s", functionConfigName)
+		}
+
+		p.Logger.WarnWith("Failed to configs because they were not found",
+			"name", functionConfigName,
+			"error", err.Error())
 	}
 
 	p.Logger.InfoWithCtx(ctx, "Successfully deleted function",
@@ -1256,6 +1283,12 @@ func (p *Platform) deleteOrStopFunctionContainers(createFunctionOptions *platfor
 
 		if err := p.DockerClient.RemoveService(service.ID); err != nil {
 			return 0, errors.Wrap(err, "Failed to delete a function container")
+		}
+
+		// since we are removing the service we should also delete its config
+		functionConfigName := p.GetFunctionConfigName(&createFunctionOptions.FunctionConfig)
+		if _, err := p.DockerClient.RemoveConfig(functionConfigName); err != nil {
+			return 0, errors.Wrapf(err, "Failed to delete a function config %s", functionConfigName)
 		}
 	}
 
