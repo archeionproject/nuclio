@@ -51,7 +51,7 @@ func (suite *TestSuite) SetupSuite() {
 	suite.namespace = namespaces[0]
 
 	getProjectsOptions := &platform.CreateProjectOptions{
-		ProjectConfig: &platform.ProjectConfig{Meta: platform.ProjectMeta{Name: platform.DefaultProjectName, Namespace: suite.namespace}, Spec: platform.ProjectSpec{
+		ProjectConfig: &platform.ProjectConfig{Meta: platform.ProjectMeta{Name: suite.ProjectName, Namespace: suite.namespace}, Spec: platform.ProjectSpec{
 			Description: "just a description",
 		}},
 	}
@@ -144,6 +144,45 @@ func (suite *TestSuite) TestImportFunctionFlow() {
 			}, functionconfig.FunctionStateReady, time.Second)
 			return true
 		})
+}
+
+func (suite *TestSuite) TestRedeployFunction() {
+	createFunctionOptions := suite.getDeployOptions("redeployed-func")
+	createFunctionOptions.FunctionConfig.Meta.Namespace = suite.namespace
+	swarmPlatform := suite.Platform.(*swarm.Platform)
+
+	isFunctionDeployed := make(chan bool)
+	isRedeploySuccessful := make(chan bool)
+
+	go func() {
+		// redeploy the function once it is deployed
+		<-isFunctionDeployed
+		err := swarmPlatform.RedeployFunction(suite.ctx, &platform.RedeployFunctionOptions{
+			FunctionSpec: &createFunctionOptions.FunctionConfig.Spec,
+			FunctionMeta: &createFunctionOptions.FunctionConfig.Meta,
+		})
+		suite.Require().NoError(err)
+		isRedeploySuccessful <- true
+	}()
+
+	suite.DeployFunction(createFunctionOptions, func(deployResult *platform.CreateFunctionResult) bool {
+		suite.Require().NotNil(deployResult, "Expected deploy result not to be nil")
+
+		// get container id
+		containerId := suite.getFunctionServiceId(swarmPlatform, &createFunctionOptions.FunctionConfig)
+
+		// signal that function is deployed
+		isFunctionDeployed <- true
+
+		// wait for redeploy to complete
+		<-isRedeploySuccessful
+
+		// get container id again and check that it is changed
+		newContainerId := suite.getFunctionServiceId(swarmPlatform, &createFunctionOptions.FunctionConfig)
+		suite.Require().NotEqual(newContainerId, containerId)
+
+		return true
+	})
 }
 
 func (suite *TestSuite) TestDeployFunctionDisablePublishingPorts() {
