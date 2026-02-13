@@ -1019,6 +1019,7 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 		RunAsGroup:    functionSecurityContext.RunAsGroup,
 		FSGroup:       functionSecurityContext.FSGroup,
 		Devices:       createFunctionOptions.FunctionConfig.Spec.Devices,
+		Attach:        false,
 	}
 
 	serviceID := p.GetFunctionServiceName(&createFunctionOptions.FunctionConfig)

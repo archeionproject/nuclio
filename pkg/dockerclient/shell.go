@@ -880,7 +880,6 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 		dockerArguments = append(dockerArguments, fmt.Sprintf("--restart %s", common.Quote(restartPolicy)))
 	}
 
-	// TODO: I'm always detaching... it is better to move this option to the caller (Swarm platform)
 	if !runOptions.Attach {
 		dockerArguments = append(dockerArguments, "--detach")
 	}
@@ -997,7 +996,7 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 
 	runResult, err := c.cmdRunner.Run(
 		&cmdrunner.RunOptions{LogRedactions: c.redactedValues},
-		"docker service create -d %s %s %s",
+		"docker service create %s %s %s",
 		strings.Join(dockerArguments, " "),
 		imageName,
 		runOptions.Command)
