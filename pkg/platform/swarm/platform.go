@@ -315,7 +315,7 @@ func (p *Platform) CreateFunction(ctx context.Context, createFunctionOptions *pl
 		var functionStatus functionconfig.Status
 
 		// delete existing function containers
-		previousHTTPPort, err := p.deleteOrStopFunctionContainers(createFunctionOptions)
+		previousHTTPPort, err := p.deleteOrStopFunctionService(createFunctionOptions)
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to delete previous containers")
 		}
@@ -923,7 +923,7 @@ func (p *Platform) ValidateFunctionServiceHealthiness(ctx context.Context) {
 				}
 			}
 
-			// check unhealthy function to see if its container id is healthy again
+			// check unhealthy function to see if its service id is healthy again
 			if functionWasSetAsUnhealthy {
 				if err := p.checkAndSetFunctionHealthy(service.ID, function); err != nil {
 					p.Logger.ErrorWithCtx(ctx, "Failed to check a function's health and mark it as unhealthy if necessary",
@@ -1002,7 +1002,7 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 	functionSecurityContext := createFunctionOptions.FunctionConfig.Spec.SecurityContext
 
 	// run the docker image
-	runContainerOptions := &dockerclient.RunOptions{
+	runOptions := &dockerclient.RunOptions{
 		ContainerName: p.GetFunctionServiceName(&createFunctionOptions.FunctionConfig),
 		Ports: map[int]int{
 			functionExternalHTTPPort: abstract.FunctionContainerHTTPPort,
@@ -1025,7 +1025,7 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 	if !createFunctionOptions.FunctionConfig.Spec.Disable {
 		serviceID, err = p.DockerClient.CreateService(createFunctionOptions.FunctionConfig.Spec.Image,
 			&dockerclient.CreateServiceOptions{
-				RunOptions:       runContainerOptions,
+				RunOptions:       runOptions,
 				WithRegistryAuth: true,
 				Configs:          configMounts,
 				CPUs:             cpus,
@@ -1207,11 +1207,11 @@ func (p *Platform) resolveDeployedFunctionHTTPPort(serviceID string) (int, error
 	if err != nil || len(services) == 0 {
 		return 0, errors.Wrap(err, "Failed to get the service")
 	}
-	return p.getContainerHTTPTriggerPort(&services[0])
+	return p.getServiceHTTPTriggerPort(&services[0])
 }
 
-func (p *Platform) getContainerHTTPTriggerPort(container *dockerclient.Service) (int, error) {
-	return p.DockerClient.GetServicePort(container, abstract.FunctionContainerHTTPPort)
+func (p *Platform) getServiceHTTPTriggerPort(service *dockerclient.Service) (int, error) {
+	return p.DockerClient.GetServicePort(service, abstract.FunctionContainerHTTPPort)
 }
 
 func (p *Platform) marshallAnnotations(annotations map[string]string) []byte {
@@ -1228,8 +1228,9 @@ func (p *Platform) marshallAnnotations(annotations map[string]string) []byte {
 	return marshalledAnnotations
 }
 
-func (p *Platform) deleteOrStopFunctionContainers(createFunctionOptions *platform.CreateFunctionOptions) (int, error) {
+func (p *Platform) deleteOrStopFunctionService(createFunctionOptions *platform.CreateFunctionOptions) (int, error) {
 	// TODO: we should review the logic since we could also update the service instead of deleting and creating
+	// TODO: current strategy is Function -> Serivce. There is not concept of multiple service per function
 	var previousHTTPPort int
 
 	createFunctionOptions.Logger.InfoWith("Cleaning up before deployment",
@@ -1240,7 +1241,7 @@ func (p *Platform) deleteOrStopFunctionContainers(createFunctionOptions *platfor
 		Name: p.GetFunctionServiceName(&createFunctionOptions.FunctionConfig),
 	})
 	if err != nil {
-		return 0, errors.Wrap(err, "Failed to get function containers")
+		return 0, errors.Wrap(err, "Failed to get function services")
 	}
 
 	if createFunctionOptions.FunctionConfig.Spec.Disable {
@@ -1264,18 +1265,18 @@ func (p *Platform) deleteOrStopFunctionContainers(createFunctionOptions *platfor
 
 	// if the function exists, delete it
 	if len(services) > 0 {
-		createFunctionOptions.Logger.InfoWith("Function already exists, deleting function containers",
+		createFunctionOptions.Logger.InfoWith("Function already exists, deleting function services",
 			"functionName", createFunctionOptions.FunctionConfig.Meta.Name)
 	}
 
-	// iterate over containers and delete
+	// iterate over services and delete.
 	for _, service := range services {
-		createFunctionOptions.Logger.DebugWith("Deleting function container",
+		createFunctionOptions.Logger.DebugWith("Deleting function service",
 			"functionName", createFunctionOptions.FunctionConfig.Meta.Name,
-			"containerName", service.Spec.Name)
-		previousHTTPPort, err = p.getContainerHTTPTriggerPort(&service)
+			"serviceName", service.Spec.Name)
+		previousHTTPPort, err = p.getServiceHTTPTriggerPort(&service)
 		if err != nil {
-			return 0, errors.Wrap(err, "Failed to get a container's HTTP-trigger port")
+			return 0, errors.Wrap(err, "Failed to get a service's HTTP-trigger port")
 		}
 
 		if err := p.removeService(service.ID); err != nil {
@@ -1312,7 +1313,7 @@ func (p *Platform) setFunctionUnhealthy(function platform.Function) error {
 		"functionName", function.GetConfig().Meta.Name,
 		"functionStatus", functionStatus)
 
-	// function container is not healthy or missing, set function state as error
+	// function service is not healthy or missing, set function state as error
 	return p.localStore.CreateOrUpdateFunction(&functionconfig.ConfigWithStatus{
 		Config: *function.GetConfig(),
 		Status: *functionStatus,
@@ -1322,7 +1323,7 @@ func (p *Platform) setFunctionUnhealthy(function platform.Function) error {
 func (p *Platform) checkAndSetFunctionHealthy(serviceID string, function platform.Function) error {
 	if err := p.DockerClient.AwaitServiceHealth(serviceID,
 		&p.Config.Local.FunctionContainersHealthinessTimeout); err != nil {
-		return errors.Wrapf(err, "Failed to ensure the health of container ID %s", serviceID)
+		return errors.Wrapf(err, "Failed to ensure the health of service ID %s", serviceID)
 	}
 	functionStatus := function.GetStatus()
 
@@ -1336,7 +1337,7 @@ func (p *Platform) checkAndSetFunctionHealthy(serviceID string, function platfor
 		"functionName", function.GetConfig().Meta.Name,
 		"functionStatus", functionStatus)
 
-	// function container is not healthy or missing, set function state as error
+	// function service is not healthy or missing, set function state as error
 	return p.localStore.CreateOrUpdateFunction(&functionconfig.ConfigWithStatus{
 		Config: *function.GetConfig(),
 		Status: *functionStatus,
@@ -1355,9 +1356,9 @@ func (p *Platform) waitForService(serviceID string, timeout int) error {
 	if err := p.DockerClient.AwaitServiceHealth(serviceID, &readinessTimeout); err != nil {
 		var errMessage string
 
-		containerLogs, getServiceLogsErr := p.DockerClient.GetServiceLogs(serviceID)
+		serviceLogs, getServiceLogsErr := p.DockerClient.GetServiceLogs(serviceID)
 		if getServiceLogsErr == nil {
-			errMessage = fmt.Sprintf("Function wasn't ready in time. Logs:\n%s", containerLogs)
+			errMessage = fmt.Sprintf("Function wasn't ready in time. Logs:\n%s", serviceLogs)
 		} else {
 			errMessage = fmt.Sprintf("Function wasn't ready in time (couldn't fetch logs: %s)", getServiceLogsErr.Error())
 		}
