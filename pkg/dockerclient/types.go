@@ -131,8 +131,19 @@ type Container struct {
 
 type CreateServiceOptions struct {
 	*RunOptions
+	// TODO: we shadows those variables
+	// maybe it is better to refactor.
+	// We also use ContainerNamer from
+	// RunOptions which is not ideal
+	CPUs             ResourceSpec
+	Memory           ResourceSpec
 	WithRegistryAuth bool
 	Configs          []ConfigMount
+}
+
+type ResourceSpec struct {
+	Request string
+	Limit   string
 }
 type Service struct {
 	ID              string

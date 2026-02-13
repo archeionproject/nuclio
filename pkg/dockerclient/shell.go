@@ -880,32 +880,31 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 		dockerArguments = append(dockerArguments, fmt.Sprintf("--restart %s", common.Quote(restartPolicy)))
 	}
 
+	// TODO: I'm always detaching... it is better to move this option to the caller (Swarm platform)
 	if !runOptions.Attach {
 		dockerArguments = append(dockerArguments, "--detach")
 	}
 
 	/*
-		CPUs, Memory and GPUs are handled differently in Docker swarm:
-
-		--cpus=1.5 means that the container will have 1 and half cpus dedicated to
-		it. -> in docker swarm we have --reserve-cpu
-		--memory=2g means the maximum amount of memory that the container can use.
-		-> in swarm we have --memory-limit
-
 		GPUs are handled differently via '--generic-resource' after configuring
 		the Docker daemon on the swarm nodes, not with a simple config flag. Example:
 		--generic-resource "NVIDIA-GPU=1"
 	*/
-	if runOptions.GPUs != "" {
-		dockerArguments = append(dockerArguments, fmt.Sprintf("--gpus %s", common.Quote(runOptions.GPUs)))
+
+	if runOptions.Memory.Request != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--reserve-memory %s", runOptions.Memory.Request))
 	}
 
-	if runOptions.Memory != "" {
-		dockerArguments = append(dockerArguments, fmt.Sprintf("--memory %s", runOptions.Memory))
+	if runOptions.Memory.Limit != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--limit-memory %s", runOptions.Memory.Limit))
 	}
 
-	if runOptions.CPUs != "" {
-		dockerArguments = append(dockerArguments, fmt.Sprintf("--cpus %s", runOptions.CPUs))
+	if runOptions.CPUs.Request != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--reserve-cpu %s", runOptions.CPUs.Request))
+	}
+
+	if runOptions.CPUs.Limit != "" {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--limit-cpu %s", runOptions.CPUs.Limit))
 	}
 
 	if runOptions.Remove {

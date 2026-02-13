@@ -1003,8 +1003,8 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 		Network:       network,
 		RestartPolicy: restartPolicy,
 		GPUs:          gpus,
-		CPUs:          cpus,
-		Memory:        memory,
+		CPUs:          "",
+		Memory:        "",
 		MountPoints:   mountPoints,
 		RunAsUser:     functionSecurityContext.RunAsUser,
 		RunAsGroup:    functionSecurityContext.RunAsGroup,
@@ -1019,6 +1019,8 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 				RunOptions:       runContainerOptions,
 				WithRegistryAuth: true,
 				Configs:          configMounts,
+				CPUs:             cpus,
+				Memory:           memory,
 			})
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to create Swarm Service")
@@ -1503,26 +1505,37 @@ func (p *Platform) resolveFunctionRestartPolicy(createFunctionOptions *platform.
 	return p.Config.Local.DefaultFunctionRestartPolicy, nil
 }
 
-func (p *Platform) resolveFunctionSpecRequestCPUs(functionSpec functionconfig.Spec) string {
-	if functionSpec.Resources.Limits.Cpu().MilliValue() > 0 {
-
-		// format float to string, trim trailing zeros (e.g.: 0.100000 -> 0.1)
-		cpus := strings.TrimRight(
-			fmt.Sprintf("%f", functionSpec.Resources.Limits.Cpu().AsApproximateFloat64()),
-			"0")
-		if strings.HasSuffix(cpus, ".") {
-			cpus += "0"
+func (p *Platform) resolveFunctionSpecRequestCPUs(functionSpec functionconfig.Spec) dockerclient.ResourceSpec {
+	formatCPUs := func(val float64) string {
+		if val > 0 {
+			// format float to string, trim trailing zeros (e.g.: 0.100000 -> 0.1)
+			result := strings.TrimRight(
+				fmt.Sprintf("%f", functionSpec.Resources.Limits.Cpu().AsApproximateFloat64()),
+				"0")
+			if strings.HasSuffix(result, ".") {
+				result += "0"
+			}
 		}
-		return cpus
+		return ""
 	}
-	return ""
+
+	return dockerclient.ResourceSpec{
+		Limit:   formatCPUs(functionSpec.Resources.Limits.Cpu().AsApproximateFloat64()),
+		Request: formatCPUs(functionSpec.Resources.Requests.Cpu().AsApproximateFloat64()),
+	}
 }
 
-func (p *Platform) resolveFunctionSpecRequestMemory(functionSpec functionconfig.Spec) string {
-	if functionSpec.Resources.Limits.Memory().Value() > 0 {
-		return fmt.Sprintf("%db",
-			functionSpec.Resources.Limits.Memory().Value(),
-		)
+func (p *Platform) resolveFunctionSpecRequestMemory(functionSpec functionconfig.Spec) dockerclient.ResourceSpec {
+	formatMem := func(val int64) string {
+		if val > 0 {
+			return fmt.Sprintf("%db", val)
+		}
+		return ""
 	}
-	return ""
+
+	return dockerclient.ResourceSpec{
+		Limit:   formatMem(functionSpec.Resources.Limits.Memory().Value()),
+		Request: formatMem(functionSpec.Resources.Requests.Memory().Value()),
+	}
+}
 }
