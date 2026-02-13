@@ -124,6 +124,12 @@ type Client interface {
 	// AwaitContainerHealth blocks until the given container is healthy or the timeout passes
 	AwaitServiceHealth(serviceID string, timeout *time.Duration) error
 
+	// Return the composed logs of a service
+	GetServiceLogs(serviceID string) (string, error)
+
+	// Same as GetServiceLogs but as stream
+	GetServiceLogStream(ctx context.Context, serviceID string, logOptions *ContainerLogsOptions) (io.ReadCloser, error)
+
 	// GetServices returns a list of services which match a certain criteria
 	GetServices(*GetServiceOptions) ([]Service, error)
 

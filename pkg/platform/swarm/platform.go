@@ -519,7 +519,7 @@ func (p *Platform) ProxyFunctionLogs(ctx context.Context, options interface{}) (
 			tail = strconv.FormatInt(*typedOptions.TailLines, 10)
 		}
 
-		return p.DockerClient.GetContainerLogStream(ctx,
+		return p.DockerClient.GetServiceLogStream(ctx,
 			typedOptions.Name,
 			&dockerclient.ContainerLogsOptions{
 				Follow: typedOptions.Follow,
@@ -1359,13 +1359,11 @@ func (p *Platform) waitForService(serviceID string, timeout int) error {
 	if err := p.DockerClient.AwaitServiceHealth(serviceID, &readinessTimeout); err != nil {
 		var errMessage string
 
-		// try to get error logs
-		// TODO: get Service logs
-		containerLogs, getContainerLogsErr := p.DockerClient.GetContainerLogs(serviceID)
-		if getContainerLogsErr == nil {
+		containerLogs, getServiceLogsErr := p.DockerClient.GetServiceLogs(serviceID)
+		if getServiceLogsErr == nil {
 			errMessage = fmt.Sprintf("Function wasn't ready in time. Logs:\n%s", containerLogs)
 		} else {
-			errMessage = fmt.Sprintf("Function wasn't ready in time (couldn't fetch logs: %s)", getContainerLogsErr.Error())
+			errMessage = fmt.Sprintf("Function wasn't ready in time (couldn't fetch logs: %s)", getServiceLogsErr.Error())
 		}
 
 		return errors.Wrap(err, errMessage)

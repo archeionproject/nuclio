@@ -1148,26 +1148,74 @@ func (c *ShellClient) AwaitServiceHealth(serviceID string, timeout *time.Duratio
 		c.logger.DebugWith("Service is healthy", "serviceID", serviceID)
 	case <-timeoutChan:
 		timedOut = true
-
-		/*
-			TODO: we should get logs from service
-			containerLogs, err := c.GetContainerLogs(serviceID)
-			if err != nil {
-				c.logger.ErrorWith("Container wasn't healthy within timeout (failed to get logs)",
-					"containerID", serviceID,
-					"timeout", timeout,
-					"err", err)
-			} else {
-				c.logger.WarnWith("Container wasn't healthy within timeout",
-					"containerID", serviceID,
-					"timeout", timeout,
-					"logs", containerLogs)
-			}
-		*/
+		// TODO: when the image is not found the error can be found as property of the task
+		// we should find a better strategy to return the error here.
+		containerLogs, err := c.GetServiceLogs(serviceID)
+		if err != nil {
+			c.logger.ErrorWith("Container wasn't healthy within timeout (failed to get logs)",
+				"containerID", serviceID,
+				"timeout", timeout,
+				"err", err)
+		} else {
+			c.logger.WarnWith("Container wasn't healthy within timeout",
+				"containerID", serviceID,
+				"timeout", timeout,
+				"logs", containerLogs)
+		}
 		return errors.New("Service wasn't healthy in time")
 	}
 
 	return nil
+}
+
+func (c *ShellClient) GetServiceLogs(serviceID string) (string, error) {
+	c.logger.DebugWith("Getting service logs", "serviceID", serviceID)
+
+	// serviceID is ID or name
+	if !containerIDRegex.MatchString(serviceID) && !restrictedNameRegex.MatchString(serviceID) {
+		return "", errors.New("Invalid service ID name in start service")
+	}
+
+	runOptions := &cmdrunner.RunOptions{
+		CaptureOutputMode: cmdrunner.CaptureOutputModeCombined,
+	}
+
+	runResult, err := c.runCommand(runOptions, "docker service logs %s", serviceID)
+	return runResult.Output, err
+}
+
+func (c *ShellClient) GetServiceLogStream(ctx context.Context,
+	serviceID string,
+	logOptions *ContainerLogsOptions) (io.ReadCloser, error) {
+
+	if logOptions == nil {
+		logOptions = &ContainerLogsOptions{
+			Follow: true,
+		}
+	}
+
+	var cmdArgs []string
+	if logOptions.Since != "" {
+		cmdArgs = append(cmdArgs, fmt.Sprintf("--since %s", common.Quote(logOptions.Since)))
+	}
+	if logOptions.Tail != "" {
+		cmdArgs = append(cmdArgs, fmt.Sprintf("--tail %s", common.Quote(logOptions.Tail)))
+	}
+
+	if logOptions.Follow {
+		return c.streamCommand(ctx,
+			nil,
+			"docker service logs %s --follow %s", strings.Join(cmdArgs, " "), serviceID)
+	}
+
+	output, err := c.runCommand(&cmdrunner.RunOptions{
+		CaptureOutputMode: cmdrunner.CaptureOutputModeCombined,
+	}, "docker service logs %s %s", strings.Join(cmdArgs, " "), serviceID)
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to get container log stream")
+	}
+
+	return io.NopCloser(strings.NewReader(output.Output)), nil
 }
 
 // GetContainers returns a list of container IDs which match a certain criteria
