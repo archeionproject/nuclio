@@ -21,7 +21,7 @@ FROM ${NUCLIO_BASE_IMAGE_NAME}:${NUCLIO_BASE_ALPINE_IMAGE_TAG} as build-processo
 
 # Download required packages for plugin compilation
 # binutils-gold for arm64 handling of "collect2: fatal error: cannot find 'ld'"
-RUN apk add --no-cache git gcc musl-dev file binutils-gold
+RUN apk add --no-cache git gcc musl-dev file binutils
 
 ARG NUCLIO_GO_LINK_FLAGS_INJECT_VERSION
 

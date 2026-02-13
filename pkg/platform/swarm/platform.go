@@ -179,7 +179,7 @@ func (p *Platform) Initialize(ctx context.Context) error {
 	return nil
 }
 
-// CreateFunction will simply run a docker image
+// CreateFunction will create a new service
 func (p *Platform) CreateFunction(ctx context.Context, createFunctionOptions *platform.CreateFunctionOptions) (
 	*platform.CreateFunctionResult, error) {
 	var err error
@@ -1504,13 +1504,11 @@ func (p *Platform) resolveFunctionRestartPolicy(createFunctionOptions *platform.
 func (p *Platform) resolveFunctionSpecRequestCPUs(functionSpec functionconfig.Spec) dockerclient.ResourceSpec {
 	formatCPUs := func(val float64) string {
 		if val > 0 {
-			// format float to string, trim trailing zeros (e.g.: 0.100000 -> 0.1)
-			result := strings.TrimRight(
-				fmt.Sprintf("%f", functionSpec.Resources.Limits.Cpu().AsApproximateFloat64()),
-				"0")
+			result := strings.TrimRight(fmt.Sprintf("%f", val), "0")
 			if strings.HasSuffix(result, ".") {
 				result += "0"
 			}
+			return result
 		}
 		return ""
 	}
@@ -1522,16 +1520,40 @@ func (p *Platform) resolveFunctionSpecRequestCPUs(functionSpec functionconfig.Sp
 }
 
 func (p *Platform) resolveFunctionSpecRequestMemory(functionSpec functionconfig.Spec) dockerclient.ResourceSpec {
+	// Swarm requires a minimum of 4MB (4 * 1024 * 1024 bytes)
+	// We are getting a deafult from the configuration object which is 1Mb (1 * 1024 * 1024 bytes)
+	// and if the user didn't specify anything, we will bump it to 4Mb to meet Swarm's requirements.
+	// see platformconfig.enrichContainerResources(...)
+	var minSwarmMemory int64 = 4 * 1024 * 1024
+
 	formatMem := func(val int64) string {
 		if val > 0 {
-			return fmt.Sprintf("%db", val)
+			// If the value is below the Swarm threshold, bump it to 4MB
+			effectiveMem := val
+			if effectiveMem < minSwarmMemory {
+				p.Logger.WarnWith("Increasing memory to Swarm minimum",
+					"provided", val,
+					"minimum", minSwarmMemory)
+				effectiveMem = minSwarmMemory
+			}
+			return fmt.Sprintf("%db", effectiveMem)
 		}
 		return ""
 	}
 
+	limit := functionSpec.Resources.Limits.Memory().Value()
+	request := functionSpec.Resources.Requests.Memory().Value()
+
+	// Safety check: In Docker, Limit must be >= Reservation (Request).
+	// If the user provided a limit > 0 but it's lower than our new 4MB request floor,
+	// we must bump the limit as well.
+	if limit > 0 && limit < request && request < minSwarmMemory {
+		limit = minSwarmMemory
+	}
+
 	return dockerclient.ResourceSpec{
-		Limit:   formatMem(functionSpec.Resources.Limits.Memory().Value()),
-		Request: formatMem(functionSpec.Resources.Requests.Memory().Value()),
+		Limit:   formatMem(limit),
+		Request: formatMem(request),
 	}
 }
 

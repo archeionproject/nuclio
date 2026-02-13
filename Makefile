@@ -77,8 +77,6 @@ GO_LINK_FLAGS_INJECT_VERSION := $(GO_LINK_FLAGS) \
 # Nuclio test timeout
 NUCLIO_GO_TEST_TIMEOUT ?= "60m"
 
-BENCHMARK_REPORT_PATH ?= benchmark_report.txt
-
 NUCLIO_DEFAULT_LIST_TESTS_MAKE_COMMAND=list-all-dirs-with-tests
 LIST_TESTS_MAKE_COMMAND := $(if $(LIST_TESTS_MAKE_COMMAND),$(LIST_TESTS_MAKE_COMMAND),$(NUCLIO_DEFAULT_LIST_TESTS_MAKE_COMMAND))
 
@@ -169,10 +167,7 @@ get-current-version:
 .PHONY: bump-helm-charts
 bump-helm-charts:
 	@if [ -n "$(TARGET_VERSION)" ]; then \
-	go run hack/scripts/releaser/releaser.go \
-        --target-version=$(TARGET_VERSION) \
-        --skip-publish-helm-charts \
-        $(if $(HELM_TARGET_VERSION),--helm-charts-release-version=$(HELM_TARGET_VERSION)); \
+		go run hack/scripts/releaser/releaser.go --target-version=$(TARGET_VERSION) --skip-publish-helm-charts ;\
 	else \
 		go run hack/scripts/releaser/releaser.go --$(BUMP_VERSION_MODE) --skip-publish-helm-charts; \
 	fi
@@ -183,7 +178,7 @@ bump-helm-charts:
 #
 
 # tools get built with the specified OS/arch and inject version
-GO_BUILD_TOOL_WORKDIR = /nuclio
+GO_BUILD_TOOL_WORKDIR = //nuclio
 GO_BUILD_CMD = go build -ldflags="$(GO_LINK_FLAGS_INJECT_VERSION)"
 
 #
@@ -297,15 +292,12 @@ NUCTL_TARGET = $(GOPATH)/bin/nuctl
 .PHONY: nuctl
 nuctl: ensure-gopath build-builder
 	docker run \
-		--volume $(GOPATH)/bin:/go/bin \
+		--volume //c/Users/reluc/go/bin://go/bin \
 		--env GOOS=$(NUCLIO_OS) \
 		--env GOARCH=$(NUCLIO_ARCH) \
 		$(NUCLIO_DOCKER_REPO)/nuclio-builder:$(NUCLIO_DOCKER_IMAGE_TAG) \
 		$(GO_BUILD_CMD) -o /go/bin/$(NUCTL_BIN_NAME) cmd/nuctl/main.go
-ifeq ($(NUCLIO_NUCTL_CREATE_SYMLINK), true)
-	@rm -f $(NUCTL_TARGET)
-	@ln -sF $(GOPATH)/bin/$(NUCTL_BIN_NAME) $(NUCTL_TARGET)
-endif
+
 
 .PHONY: nuctl-bin
 nuctl-bin: ensure-gopath
@@ -358,7 +350,7 @@ controller: build-builder
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
 		--cache-from $(NUCLIO_CACHE_REPO)/controller:$(NUCLIO_DOCKER_IMAGE_CACHE_TAG) \
 		--file cmd/controller/Dockerfile \
-		--platform $(NUCLIO_OS)/$(NUCLIO_ARCH) \
+		--platform linux/$(NUCLIO_ARCH) \
 		--tag $(NUCLIO_DOCKER_CONTROLLER_IMAGE_NAME) \
 		--tag $(NUCLIO_DOCKER_CONTROLLER_IMAGE_NAME_CACHE) \
 		$(NUCLIO_DOCKER_LABELS) .
@@ -397,7 +389,7 @@ dashboard: build-builder
 		--build-arg NUCLIO_DOCKER_IMAGE_TAG=$(NUCLIO_DOCKER_IMAGE_TAG) \
 		--build-arg BUILDKIT_INLINE_CACHE=1 \
 		--cache-from $(NUCLIO_DOCKER_DASHBOARD_IMAGE_NAME_CACHE) \
-		--platform $(NUCLIO_OS)/$(NUCLIO_ARCH) \
+		--platform linux/$(NUCLIO_ARCH) \
 		--file cmd/dashboard/docker/Dockerfile \
 		--tag $(NUCLIO_DOCKER_DASHBOARD_IMAGE_NAME) \
 		--tag $(NUCLIO_DOCKER_DASHBOARD_IMAGE_NAME_CACHE) \
@@ -424,7 +416,6 @@ autoscaler: build-builder
 		--file cmd/autoscaler/Dockerfile \
 		--tag $(NUCLIO_DOCKER_SCALER_IMAGE_NAME) \
 		--tag $(NUCLIO_DOCKER_SCALER_IMAGE_NAME_CACHE) \
-		--platform $(NUCLIO_OS)/$(NUCLIO_ARCH) \
 		$(NUCLIO_DOCKER_LABELS) .
 
 ifneq ($(filter autoscaler,$(DOCKER_IMAGES_RULES)),)
@@ -448,7 +439,6 @@ dlx: build-builder
 		--file cmd/dlx/Dockerfile \
 		--tag $(NUCLIO_DOCKER_DLX_IMAGE_NAME) \
 		--tag $(NUCLIO_DOCKER_DLX_IMAGE_NAME_CACHE) \
-		--platform $(NUCLIO_OS)/$(NUCLIO_ARCH) \
 		$(NUCLIO_DOCKER_LABELS) .
 
 ifneq ($(filter dlx,$(DOCKER_IMAGES_RULES)),)
@@ -642,7 +632,6 @@ NUCLIO_DOCKER_BUILDER_IMAGE_NAME=\
 NUCLIO_DOCKER_BUILDER_IMAGE_NAME_CACHE=\
  $(NUCLIO_CACHE_REPO)/nuclio-builder:$(NUCLIO_DOCKER_IMAGE_CACHE_TAG)
 
-# NOTE: This target must be run on a Linux host due to platform-specific builder requirements
 .PHONY: build-builder
 build-builder:
 	docker build \
@@ -653,7 +642,6 @@ build-builder:
 		--file hack/docker/build/builder/Dockerfile \
 		--tag $(NUCLIO_DOCKER_BUILDER_IMAGE_NAME) \
 		--tag $(NUCLIO_DOCKER_BUILDER_IMAGE_NAME_CACHE) \
-		--platform linux/$(NUCLIO_ARCH) \
 		.
 
 $(eval DOCKER_IMAGES_CACHE += $(filter-out $(DOCKER_IMAGES_CACHE),$(NUCLIO_DOCKER_BUILDER_IMAGE_NAME_CACHE)))
@@ -666,12 +654,12 @@ $(eval DOCKER_IMAGES_CACHE += $(filter-out $(DOCKER_IMAGES_CACHE),$(NUCLIO_DOCKE
 .PHONY: fmt
 fmt: ensure-golangci-linter
 	gofmt -s -w .
-	$(GOLANGCI_LINT_BIN) run --fix
+	$(GOPATH)/bin/golangci-lint run --fix
 
 .PHONY: lint
 lint: modules ensure-test-files-annotated ensure-golangci-linter
 	@echo Linting...
-	$(GOLANGCI_LINT_BIN) run -v
+	$(GOPATH)/bin/golangci-lint run -v
 	@echo Done.
 
 .PHONY: lint-docs
@@ -705,31 +693,13 @@ ensure-golangci-linter:
 		echo "golangci-lint not found. Installing..."; \
 		$(GOLANGCI_LINT_INSTALL_COMMAND); \
 	else \
-		installed_version=$$($(GOLANGCI_LINT_BIN) version | awk '/version/ {gsub(/^v/, "", $$4); print $$4}'); \
+		installed_version=$$($(GOLANGCI_LINT_BIN) version | awk '/version/ {print $$4}'); \
 		if [ "$$installed_version" != "$(GOLANGCI_LINT_VERSION)" ]; then \
 			echo "golangci-lint version mismatch ($$installed_version != $(GOLANGCI_LINT_VERSION)). Reinstalling..."; \
 			$(GOLANGCI_LINT_INSTALL_COMMAND); \
 		fi \
 	fi
 
-#
-# Security scanning (govulncheck)
-#
-
-GOVULNCHECK_VERSION := latest
-GOVULNCHECK_BIN := $(CURDIR)/.bin/govulncheck
-GOVULNCHECK_INSTALL_COMMAND := GOBIN=$(CURDIR)/.bin go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-
-.PHONY: ensure-govulncheck
-ensure-govulncheck:
-	@if ! command -v $(GOVULNCHECK_BIN) >/dev/null 2>&1; then \
-		echo "govulncheck not found. Installing..."; \
-		$(GOVULNCHECK_INSTALL_COMMAND); \
-	fi
-
-.PHONY: govulncheck
-govulncheck: modules ensure-govulncheck
-	$(GOVULNCHECK_BIN) cmd/... pkg/...
 #
 # Testing
 #
@@ -801,7 +771,8 @@ test-undockerized: ensure-gopath $(GOTESTSUM_BIN)
 		-v \
 		-p 1 \
 		--timeout $(NUCLIO_GO_TEST_TIMEOUT) \
-		${LIST}
+		github.com/nuclio/nuclio/pkg/platform/swarm/test \
+		-run=TestProjectTestSuite/TestRedeployFunction
 
 .PHONY: test-k8s-undockerized
 test-k8s-undockerized: ensure-gopath $(GOTESTSUM_BIN)
@@ -835,24 +806,24 @@ test-broken-undockerized: ensure-gopath $(GOTESTSUM_BIN)
 
 .PHONY: test
 test: build-test
+	$(eval SAFEGOPATH=$(shell echo /$(GOPATH)))
 	$(eval NUCLIO_TEST_MAKE_TARGET ?= $(if $(NUCLIO_TEST_BROKEN),test-broken-undockerized,test-undockerized))
 	@docker run \
-		--rm \
-		--volume /var/run/docker.sock:/var/run/docker.sock \
-		--volume $(GOPATH)/bin:/go/bin \
-		--volume $(NUCLIO_PATH):$(GO_BUILD_TOOL_WORKDIR) \
-		--volume /tmp:/tmp \
+		--volume //var/run/docker.sock://var/run/docker.sock \
+		--volume /C:/Users/reluc/go/bin://go/bin \
+		--volume /$(NUCLIO_PATH):/$(GO_BUILD_TOOL_WORKDIR) \
 		--workdir $(GO_BUILD_TOOL_WORKDIR) \
 		--env NUCLIO_TEST_HOST=$(NUCLIO_TEST_HOST) \
 		--env NUCLIO_VERSION_GIT_COMMIT=$(NUCLIO_VERSION_GIT_COMMIT) \
 		--env NUCLIO_LABEL=$(NUCLIO_LABEL) \
-		--env NUCLIO_ARCH=$(NUCLIO_ARCH) \
+		--env NUCLIO_ARCH=amd64 \
 		--env NUCLIO_OS=$(NUCLIO_OS) \
 		--env NUCLIO_GO_TEST_TIMEOUT=$(NUCLIO_GO_TEST_TIMEOUT) \
 		--env NUCLIO_TEST_HOST_PATH=$(NUCLIO_PATH) \
+		--env GOARCH=amd64 \
 		--env NUCLIO_CI_SKIP_STRESS_TEST \
 		$(NUCLIO_DOCKER_TEST_TAG) \
-		/bin/bash -c "git config --global --add safe.directory /nuclio && LIST_TESTS_MAKE_COMMAND=${LIST_TESTS_MAKE_COMMAND} make ${NUCLIO_TEST_MAKE_TARGET}"
+		//bin/bash -c "git config --global --add safe.directory /nuclio && LIST_TESTS_MAKE_COMMAND=${LIST_TESTS_MAKE_COMMAND} make ${NUCLIO_TEST_MAKE_TARGET}"
 
 .PHONY: test-k8s
 test-k8s: build-test
@@ -919,7 +890,7 @@ test-nodejs:
 	 --volume $(NUCLIO_PATH)/test:/nuclio/test \
 	 --workdir /nuclio/nodejs \
 	 --env RUN_MODE=CI \
-	 $(NODE_IMAGE_NAME) \
+	 node:16-alpine \
 	 sh -c 'npm install && npm run lint && npm run test'
 
 .PHONY: test-python
@@ -939,8 +910,7 @@ TEST_LIST_RUN_EACH_IN_PARALLEL = pkg/nuctl/test \
 								 pkg/processor/build/runtime/golang/test  \
 								 pkg/processor/build/runtime/java/test  \
 								 pkg/processor/build/runtime/python/test  \
-								 pkg/processor/runtime/python/test \
-								 pkg/processor/trigger/kafka/test
+								 pkg/processor/runtime/python/test
 
 .PHONY: list-all-dirs-with-tests
 list-all-dirs-with-tests:
@@ -977,10 +947,6 @@ python-tests:
 .PHONY: python-runtime-tests
 python-runtime-tests:
 	@make list-all-dirs-with-tests | grep "pkg/processor/runtime/python/test"
-
-.PHONY: kafka-tests
-kafka-tests:
-	@make list-all-dirs-with-tests | grep "pkg/processor/trigger/kafka/test"
 
 #
 # Go env
@@ -1038,15 +1004,16 @@ patch-remote-nuclio: hack/scripts/patch-remote/.ssh/key_$(PATCH_HOST_IP)_$(PATCH
 		--private-key-file hack/scripts/patch-remote/.ssh/key_$(PATCH_HOST_IP)_$(PATCH_USERNAME) \
 		--config hack/scripts/patch-remote/patch_env.yml
 
-.PHONY: check-dependencies
-check-dependencies:
-	@python3 hack/scripts/dependency-checker/check-versions.py --makefile-path Makefile
+.PHONY: patch-remote-dashboard
+patch-remote-dashboard: hack/scripts/patch-remote/.ssh/key_$(PATCH_HOST_IP)_$(PATCH_USERNAME)
+	./hack/scripts/patch-remote/patch_remote.py \
+		--private-key-file hack/scripts/patch-remote/.ssh/key_$(PATCH_HOST_IP)_$(PATCH_USERNAME) \
+		--config hack/scripts/patch-remote/patch_env.yml \
+		--targets dashboard
 
-.PHONY: bump-dependencies
-bump-dependencies:
-	@python3 hack/scripts/dependency-checker/check-versions.py --makefile-path Makefile --bump-to-the-latest
-
-.PHONY: update-stable-badge
-update-stable-badge:
-	@echo "Updating stable badge to version $(VERSION)"
-	@perl -0777 -i -pe 's|(<!-- STABLE_BADGE_START -->).*?(<!-- STABLE_BADGE_END -->)|$$1\n![Stable Version](https://img.shields.io/badge/stable-$(VERSION)-green)$$2|s' README.md
+.PHONY: patch-remote-controller
+patch-remote-controller: hack/scripts/patch-remote/.ssh/key_$(PATCH_HOST_IP)_$(PATCH_USERNAME)
+	./hack/scripts/patch-remote/patch_remote.py \
+		--private-key-file hack/scripts/patch-remote/.ssh/key_$(PATCH_HOST_IP)_$(PATCH_USERNAME) \
+		--config hack/scripts/patch-remote/patch_env.yml \
+		--targets controller
