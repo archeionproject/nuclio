@@ -1022,12 +1022,15 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 		Attach:        false,
 	}
 
+	noResolveImage := createFunctionOptions.FunctionConfig.Spec.Platform.Attributes["no-resolve-image"] == "true"
+
 	serviceID := p.GetFunctionServiceName(&createFunctionOptions.FunctionConfig)
 	if !createFunctionOptions.FunctionConfig.Spec.Disable {
 		serviceID, err = p.DockerClient.CreateService(createFunctionOptions.FunctionConfig.Spec.Image,
 			&dockerclient.CreateServiceOptions{
 				RunOptions:       runOptions,
 				WithRegistryAuth: true,
+				NoResolveImage:   noResolveImage,
 				Configs:          configMounts,
 				CPUs:             cpus,
 				Memory:           memory,

@@ -138,6 +138,7 @@ type CreateServiceOptions struct {
 	CPUs             ResourceSpec
 	Memory           ResourceSpec
 	WithRegistryAuth bool
+	NoResolveImage   bool
 	Configs          []ConfigMount
 }
 

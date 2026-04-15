@@ -994,6 +994,10 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 		dockerArguments = append(dockerArguments, "--with-registry-auth")
 	}
 
+	if runOptions.NoResolveImage {
+		dockerArguments = append(dockerArguments, "--no-resolve-image")
+	}
+
 	runResult, err := c.cmdRunner.Run(
 		&cmdrunner.RunOptions{LogRedactions: c.redactedValues},
 		"docker service create %s %s %s",
