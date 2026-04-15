@@ -1161,6 +1161,7 @@ func (p *Platform) getFunctionHTTPPort(createFunctionOptions *platform.CreateFun
 
 	// check http trigger annotations for avoiding port publishing
 	if p.disablePortPublishing(createFunctionOptions) {
+		p.Logger.DebugWith("Port publishing is disabled for function (either no http triggers found or disabled)", "functionName", createFunctionOptions.FunctionConfig.Meta.Name)
 		return dockerclient.RunOptionsNoPort, nil
 	}
 
@@ -1175,10 +1176,12 @@ func (p *Platform) getFunctionHTTPPort(createFunctionOptions *platform.CreateFun
 }
 
 func (p *Platform) disablePortPublishing(createFunctionOptions *platform.CreateFunctionOptions) bool {
-
+	// by default, we disable port publishing if there are no http triggers
+	disable := true
 	// iterate over triggers and check if there is a http trigger with disable port publishing
 	for _, trigger := range createFunctionOptions.FunctionConfig.Spec.Triggers {
 		if trigger.Kind == "http" {
+			disable = false
 			triggerAttributes := http.Configuration{}
 
 			// parse attributes
@@ -1201,7 +1204,7 @@ func (p *Platform) disablePortPublishing(createFunctionOptions *platform.CreateF
 		}
 	}
 
-	return false
+	return disable
 }
 
 func (p *Platform) resolveDeployedFunctionHTTPPort(serviceID string) (int, error) {
