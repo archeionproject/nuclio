@@ -1530,6 +1530,8 @@ func (p *Platform) resolveFunctionSpecRequestMemory(functionSpec functionconfig.
 	// We are getting a deafult from the configuration object which is 1Mb (1 * 1024 * 1024 bytes)
 	// and if the user didn't specify anything, we will bump it to 4Mb to meet Swarm's requirements.
 	// see platformconfig.enrichContainerResources(...)
+	// TODO: extends platform configuration logic to allow customizing the minimum memory limit
+	// for Swarm and remove this hardcoded value.
 	var minSwarmMemory int64 = 4 * 1024 * 1024
 
 	formatMem := func(val int64) string {
