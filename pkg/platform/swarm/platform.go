@@ -24,7 +24,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -39,7 +38,6 @@ import (
 	"github.com/nuclio/nuclio/pkg/platform/abstract/project"
 	externalproject "github.com/nuclio/nuclio/pkg/platform/abstract/project/external"
 	"github.com/nuclio/nuclio/pkg/platform/abstract/project/internalc/local"
-	"github.com/nuclio/nuclio/pkg/platform/local/client"
 	"github.com/nuclio/nuclio/pkg/platformconfig"
 	"github.com/nuclio/nuclio/pkg/processor"
 	"github.com/nuclio/nuclio/pkg/processor/trigger/http"
@@ -73,10 +71,8 @@ type Platform struct {
 	*abstract.Platform
 	cmdRunner      cmdrunner.CmdRunner
 	DockerClient   dockerclient.Client
-	localStore     *client.Store
+	localStore     local.Storage
 	projectsClient project.Client
-
-	storeImageName string
 }
 
 const Mib = 1048576
@@ -120,15 +116,6 @@ func NewPlatform(ctx context.Context,
 		return nil, errors.Wrap(err, "Failed to create a command runner")
 	}
 
-	switch runtime.GOARCH {
-	case "arm64":
-		newPlatform.storeImageName = "gcr.io/iguazio/arm64v8/alpine:3.20"
-	case "arm":
-		newPlatform.storeImageName = "gcr.io/iguazio/arm32v7/alpine:3.20"
-	default:
-		newPlatform.storeImageName = "gcr.io/iguazio/alpine:3.20"
-	}
-
 	if newPlatform.ContainerBuilder, err = containerimagebuilderpusher.NewDocker(newPlatform.Logger,
 		platformConfiguration.ContainerBuilderConfiguration); err != nil {
 		return nil, errors.Wrap(err, "Failed to create container image builder pusher")
@@ -139,11 +126,8 @@ func NewPlatform(ctx context.Context,
 		return nil, errors.Wrap(err, "Failed to create a Docker client")
 	}
 
-	// create a local store for configs and stuff
-	if newPlatform.localStore, err = client.NewStore(parentLogger,
-		newPlatform,
-		newPlatform.DockerClient,
-		newPlatform.storeImageName); err != nil {
+	// create a local file store for configs and stuff
+	if newPlatform.localStore, err = newLocalFileStore(parentLogger, newPlatform); err != nil {
 		return nil, errors.Wrap(err, "Failed to create a local store")
 	}
 

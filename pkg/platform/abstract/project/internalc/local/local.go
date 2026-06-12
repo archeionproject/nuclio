@@ -19,21 +19,19 @@ package local
 import (
 	"context"
 
-	"github.com/nuclio/nuclio/pkg/platform"
-	abstractproject "github.com/nuclio/nuclio/pkg/platform/abstract/project"
-	"github.com/nuclio/nuclio/pkg/platform/local/client"
-
 	"github.com/nuclio/errors"
 	"github.com/nuclio/logger"
+	"github.com/nuclio/nuclio/pkg/platform"
+	abstractproject "github.com/nuclio/nuclio/pkg/platform/abstract/project"
 )
 
 type Client struct {
 	Logger     logger.Logger
 	platform   platform.Platform
-	localStore *client.Store
+	localStore Storage
 }
 
-func NewClient(parentLogger logger.Logger, platform platform.Platform, localStore *client.Store) (abstractproject.Client, error) {
+func NewClient(parentLogger logger.Logger, platform platform.Platform, localStore Storage) (abstractproject.Client, error) {
 	newClient := Client{
 		Logger:     parentLogger.GetChild("projects-local"),
 		localStore: localStore,
