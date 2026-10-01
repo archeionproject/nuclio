@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/nuclio/nuclio/pkg/cmdrunner"
+	"github.com/nuclio/nuclio/pkg/common"
 
 	"github.com/nuclio/errors"
 	"github.com/nuclio/logger"
@@ -48,6 +49,11 @@ func (suite *ShellClientTestSuite) SetupTest() {
 
 	// create mocked cmd runner
 	suite.mockedCmdRunner = cmdrunner.NewMockRunner()
+	suite.mockedCmdRunner.
+		On("Run", mock.Anything, `echo $PATH`, mock.Anything).
+		Return(cmdrunner.RunResult{
+			Output: "/usr/bin",
+		}, nil)
 	suite.mockedCmdRunner.
 		On("Run", mock.Anything, `docker version --format "{{json .}}"`, mock.Anything).
 		Return(cmdrunner.RunResult{
@@ -202,8 +208,8 @@ func (suite *ShellClientTestSuite) TestBuildBailOnUnknownError() {
 	})
 	suite.Require().Error(err)
 
-	// 1 for docker version + 1 unknown build error
-	suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 2)
+	// 2 for echo $PATH + docker version + 1 unknown build error
+	suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 3)
 }
 
 func (suite *ShellClientTestSuite) TestBuildRetryOnErrors() {
@@ -233,8 +239,8 @@ func (suite *ShellClientTestSuite) TestBuildRetryOnErrors() {
 	})
 	suite.Require().Nil(err)
 
-	// 1 for docker version + 2 failing builds + 1 success build
-	suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 4)
+	// 2 for echo $PATH + docker version + 2 failing builds + 1 success build
+	suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 5)
 }
 
 func (suite *ShellClientTestSuite) TestBuildFailValidation() {
@@ -257,7 +263,7 @@ func (suite *ShellClientTestSuite) TestBuildFailValidation() {
 		suite.logger.DebugWith("Command expectedly failed", "err", err)
 		suite.Require().Error(err)
 		suite.Require().Contains(err.Error(), "Invalid build options")
-		suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 1)
+		suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 2)
 	}
 }
 
@@ -303,7 +309,79 @@ func (suite *ShellClientTestSuite) TestRunFailValidation() {
 			suite.logger.DebugWith("Command expectedly failed", "err", err)
 			suite.Require().Error(err)
 			suite.Require().True(strings.Contains(err.Error(), "Invalid run options"))
-			suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 1)
+			suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 2)
+		})
+	}
+}
+
+func (suite *ShellClientTestSuite) TestCreateServiceAttachesAllNetworks() {
+	var dockerArguments string
+	suite.mockedCmdRunner.
+		On("Run", mock.Anything, "docker service create %s %s %s", mock.Anything).
+		Run(func(args mock.Arguments) {
+			dockerArguments = args.Get(2).([]interface{})[0].(string)
+		}).
+		Return(cmdrunner.RunResult{
+			Output: "serviceid",
+		}, nil).
+		Once()
+
+	serviceID, err := suite.shellClient.CreateService("alpine",
+		&CreateServiceOptions{
+			RunOptions: &RunOptions{
+				ContainerName: "somename",
+				Network:       "net-a",
+			},
+			Networks: []string{"net-b", "net-c"},
+		})
+	suite.Require().NoError(err)
+	suite.Require().Equal("serviceid", serviceID)
+
+	// RunOptions.Network first, then Networks in order
+	var networkFlagIndexes []int
+	for _, network := range []string{"net-a", "net-b", "net-c"} {
+		networkFlag := "--network " + common.Quote(network)
+		suite.Require().Equal(1, strings.Count(dockerArguments, networkFlag), networkFlag)
+		networkFlagIndexes = append(networkFlagIndexes, strings.Index(dockerArguments, networkFlag))
+	}
+	suite.Require().IsIncreasing(networkFlagIndexes)
+	suite.Require().Equal(3, strings.Count(dockerArguments, "--network "))
+}
+
+func (suite *ShellClientTestSuite) TestCreateServiceFailValidationOnInvalidNetwork() {
+	for _, testCase := range []struct {
+		name                 string
+		createServiceOptions CreateServiceOptions
+	}{
+		{
+			name: "InvalidRunOptionsNetwork",
+			createServiceOptions: CreateServiceOptions{
+				RunOptions: &RunOptions{ContainerName: "cont", Network: "net-a,net-b"},
+			},
+		},
+		{
+			name: "InvalidNetworks",
+			createServiceOptions: CreateServiceOptions{
+				RunOptions: &RunOptions{ContainerName: "cont"},
+				Networks:   []string{"net-a", "net-b; rm -rf /"},
+			},
+		},
+		{
+			name: "EmptyNetworks",
+			createServiceOptions: CreateServiceOptions{
+				RunOptions: &RunOptions{ContainerName: "cont"},
+				Networks:   []string{""},
+			},
+		},
+	} {
+		suite.Run(testCase.name, func() {
+			_, err := suite.shellClient.CreateService("alpine", &testCase.createServiceOptions)
+			suite.logger.DebugWith("Command expectedly failed", "err", err)
+			suite.Require().Error(err)
+			suite.Require().Contains(err.Error(), "Invalid run options")
+
+			// only the "echo $PATH" and "docker version" calls made when creating the client
+			suite.mockedCmdRunner.AssertNumberOfCalls(suite.T(), "Run", 2)
 		})
 	}
 }

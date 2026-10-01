@@ -140,6 +140,9 @@ type CreateServiceOptions struct {
 	WithRegistryAuth bool
 	NoResolveImage   bool
 	Configs          []ConfigMount
+
+	// Networks the service is attached to (one --network flag each), after RunOptions.Network if set
+	Networks []string
 }
 
 type ResourceSpec struct {

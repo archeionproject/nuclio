@@ -53,6 +53,7 @@ import (
 
 type functionPlatformConfiguration struct {
 	Network       string
+	Networks      []string
 	RestartPolicy *dockerclient.RestartPolicy
 }
 
@@ -952,9 +953,9 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 		}
 	}()
 
-	network, err := p.resolveFunctionNetwork(createFunctionOptions)
+	networks, err := p.resolveFunctionNetworks(createFunctionOptions)
 	if err != nil {
-		return nil, errors.Wrap(err, "Failed to resolve function network")
+		return nil, errors.Wrap(err, "Failed to resolve function networks")
 	}
 
 	// TODO: swarm restart policies are different from docker containers
@@ -993,7 +994,6 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 		},
 		Env:           envMap,
 		Labels:        labels,
-		Network:       network,
 		RestartPolicy: restartPolicy,
 		GPUs:          gpus,
 		CPUs:          "",
@@ -1018,6 +1018,7 @@ func (p *Platform) deployFunction(createFunctionOptions *platform.CreateFunction
 				Configs:          configMounts,
 				CPUs:             cpus,
 				Memory:           memory,
+				Networks:         networks,
 			})
 		if err != nil {
 			return nil, errors.Wrap(err, "Failed to create Swarm Service")
@@ -1463,18 +1464,32 @@ func (p *Platform) populateFunctionInvocationStatus(functionInvocation *function
 	return nil
 }
 
-func (p *Platform) resolveFunctionNetwork(createFunctionOptions *platform.CreateFunctionOptions) (string, error) {
+// resolveFunctionNetworks returns the networks to attach the function service to - the "network" and
+// "networks" platform attributes combined (in that order, without duplicates). If neither is set, the
+// platform's default function network is used
+func (p *Platform) resolveFunctionNetworks(createFunctionOptions *platform.CreateFunctionOptions) ([]string, error) {
 
 	// get function platform-specific configuration
 	functionPlatformConfiguration, err := newFunctionPlatformConfiguration(&createFunctionOptions.FunctionConfig)
 	if err != nil {
-		return "", errors.Wrap(err, "Failed to create a function's platform configuration")
-	}
-	if functionPlatformConfiguration.Network != "" {
-		return functionPlatformConfiguration.Network, nil
+		return nil, errors.Wrap(err, "Failed to create a function's platform configuration")
 	}
 
-	return p.Config.Local.DefaultFunctionContainerNetworkName, nil
+	var networks []string
+	if functionPlatformConfiguration.Network != "" {
+		networks = append(networks, functionPlatformConfiguration.Network)
+	}
+	for _, network := range functionPlatformConfiguration.Networks {
+		if network != "" {
+			networks = append(networks, network)
+		}
+	}
+
+	if len(networks) == 0 && p.Config.Local.DefaultFunctionContainerNetworkName != "" {
+		networks = append(networks, p.Config.Local.DefaultFunctionContainerNetworkName)
+	}
+
+	return common.RemoveDuplicatesFromSliceString(networks), nil
 }
 
 func (p *Platform) resolveFunctionRestartPolicy(createFunctionOptions *platform.CreateFunctionOptions) (*dockerclient.RestartPolicy, error) {

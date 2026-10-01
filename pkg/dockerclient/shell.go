@@ -846,7 +846,7 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 	//TODO: refactor this part to be shared with docker run
 	//TODO: validate name lenght (max 63 chars) it should follow DNS-rules.
 	// validate the given run options against malicious contents
-	if err := c.validateRunOptions(imageName, runOptions.RunOptions); err != nil {
+	if err := c.validateCreateServiceOptions(imageName, runOptions); err != nil {
 		return "", errors.Wrap(err, "Invalid run options passed")
 	}
 
@@ -915,8 +915,12 @@ func (c *ShellClient) CreateService(imageName string, runOptions *CreateServiceO
 		dockerArguments = append(dockerArguments, fmt.Sprintf("--name %s", common.Quote(runOptions.ContainerName)))
 	}
 
+	// a service, unlike a container, can be attached to several networks at creation time
 	if runOptions.Network != "" {
 		dockerArguments = append(dockerArguments, fmt.Sprintf("--network %s", common.Quote(runOptions.Network)))
+	}
+	for _, network := range runOptions.Networks {
+		dockerArguments = append(dockerArguments, fmt.Sprintf("--network %s", common.Quote(network)))
 	}
 
 	if runOptions.Labels != nil {
@@ -1675,6 +1679,20 @@ func (c *ShellClient) validateRunOptions(imageName string, runOptions *RunOption
 
 	if runOptions.Network != "" && !restrictedNameRegex.MatchString(runOptions.Network) {
 		return errors.New("Invalid network name in run options")
+	}
+
+	return nil
+}
+
+func (c *ShellClient) validateCreateServiceOptions(imageName string, createServiceOptions *CreateServiceOptions) error {
+	if err := c.validateRunOptions(imageName, createServiceOptions.RunOptions); err != nil {
+		return err
+	}
+
+	for _, network := range createServiceOptions.Networks {
+		if !restrictedNameRegex.MatchString(network) {
+			return errors.New("Invalid network name in create service options")
+		}
 	}
 
 	return nil

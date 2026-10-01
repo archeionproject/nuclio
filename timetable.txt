@@ -1,0 +1,174 @@
+docker events   --filter "type=container" --filter "type=service"   --filter "nuclio.io/namespace'=nuclio" --format 'Time: {{.TimeNan
+o}} | Type: {{.Type}} | Event: {{.Action}} | Name: {{.Actor.Attributes.name}}'
+Time: 1771329405883701187 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329405883862364 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329405947929794 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329407714750748 | Type: container | Event: exec_create: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329407714912249 | Type: container | Event: exec_start: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329407822697066 | Type: container | Event: exec_die | Name: compute-api-cerbos-testing
+Time: 1771329410949112069 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329410949336820 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329411024943521 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329414058695733 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329414062015922 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329414121257388 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329414149976748 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/projects/nuclio/e2e-tests-project.json | Name: nuclio-local-storage-reader
+Time: 1771329414153141574 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/projects/nuclio/e2e-tests-project.json | Name: nuclio-local-storage-reader
+Time: 1771329414204249514 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329414225239448 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329414228263371 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329414275933265 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329414296382427 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/projects/nuclio/e2e-tests-project.json | Name: nuclio-local-storage-reader
+Time: 1771329414299321937 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/projects/nuclio/e2e-tests-project.json | Name: nuclio-local-storage-reader
+Time: 1771329414349735842 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329414376845752 | Type: container | Event: exec_create: mkdir -p /etc/nuclio/store/functions/nuclio | Name: nuclio-local-storage-reader
+Time: 1771329414380262535 | Type: container | Event: exec_start: mkdir -p /etc/nuclio/store/functions/nuclio | Name: nuclio-local-storage-reader
+Time: 1771329414439993519 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329414461519358 | Type: container | Event: extract-to-dir | Name: nuclio-local-storage-reader
+Time: 1771329414487091858 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329414490623492 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329414552147197 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329415899435351 | Type: service | Event: create | Name: nuclio-nuclio-0af8565c-bf7d-v1
+Time: 1771329415902508462 | Type: service | Event: update | Name: nuclio-nuclio-0af8565c-bf7d-v1
+Time: 1771329416026644349 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329416026807048 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329416079930044 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329417824319578 | Type: container | Event: exec_create: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329417824591425 | Type: container | Event: exec_start: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329417960225700 | Type: container | Event: exec_die | Name: compute-api-cerbos-testing
+Time: 1771329419576524035 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329419579969507 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329419623804803 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329421080904836 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329421081193154 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329421126718398 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329424652645146 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329424656413529 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329424696563124 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329426128164856 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329426128494334 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329426207606198 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329427959090273 | Type: container | Event: exec_create: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329427959391227 | Type: container | Event: exec_start: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329428066112102 | Type: container | Event: exec_die | Name: compute-api-cerbos-testing
+Time: 1771329428885742900 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/* | Name: nuclio-local-storage-reader
+Time: 1771329428889059852 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/* | Name: nuclio-local-storage-reader
+Time: 1771329428942596124 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329429719017420 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329429722320761 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329429774634660 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329431206926034 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329431207249617 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329431262346076 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329434801030770 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329434804699581 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329434854754593 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329436263201924 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329436263359476 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329436313502598 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329438067478129 | Type: container | Event: exec_create: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329438067617349 | Type: container | Event: exec_start: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329438171051143 | Type: container | Event: exec_die | Name: compute-api-cerbos-testing
+Time: 1771329438506184774 | Type: container | Event: create | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329438918508952 | Type: container | Event: start | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329439880429933 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329439883352313 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329439919594303 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329439919738681 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329439930743145 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329439938321405 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329439938609946 | Type: container | Event: health_status: healthy | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329440908686463 | Type: container | Event: exec_create: mkdir -p /etc/nuclio/store/functions/nuclio | Name: nuclio-local-storage-reader
+Time: 1771329440911921282 | Type: container | Event: exec_start: mkdir -p /etc/nuclio/store/functions/nuclio | Name: nuclio-local-storage-reader
+Time: 1771329440939758292 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329440939939709 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329440962735037 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329440964593553 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in       
+Time: 1771329440983585870 | Type: container | Event: extract-to-dir | Name: nuclio-local-storage-reader
+Time: 1771329441314512440 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329441314691149 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329441373560440 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329441966009173 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329441966132060 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329442003817132 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329443004608340 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329443004852541 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329443044089302 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329444045445679 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329444045589681 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329444100537501 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329444955946963 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329444959238156 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445006512961 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329445101281122 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329445101526590 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329445140370025 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329445250646219 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445253506707 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445310328603 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329445331943126 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/function-events/nuclio/* | Name: nuclio-local-storage-reader
+Time: 1771329445335272125 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/function-events/nuclio/* | Name: nuclio-local-storage-reader
+Time: 1771329445378285460 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329445397701552 | Type: container | Event: exec_create: /bin/stat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445400830850 | Type: container | Event: exec_start: /bin/stat /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445446457446 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329445466619481 | Type: container | Event: exec_create: /bin/rm /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445470070914 | Type: container | Event: exec_start: /bin/rm /etc/nuclio/store/functions/nuclio/0af8565c-bf7d-v1.json | Name: nuclio-local-storage-reader
+Time: 1771329445498676653 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
+Time: 1771329445555801258 | Type: service | Event: remove | Name: nuclio-nuclio-0af8565c-bf7d-v1
+Time: 1771329446141631339 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329446141793117 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329446184334294 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329446375050064 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329446375234083 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329446409294210 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329447185481073 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329447185660490 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329447233533129 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329448171941264 | Type: container | Event: exec_create: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329448172113330 | Type: container | Event: exec_start: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329448234576339 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329448234699596 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329448281917587 | Type: container | Event: exec_die | Name: compute-api-cerbos-testing
+Time: 1771329448300515986 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329448670644304 | Type: container | Event: kill | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329449301822196 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329449301965509 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329449368488325 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329450370468098 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329450370609702 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329450408274686 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329451409354806 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329451409542221 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329451409861771 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329451409992599 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329451460495110 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329451461814410 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329452461369130 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329452461596758 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329452524138917 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329453525328607 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329453525470398 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329453568086553 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329454569160111 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329454569307511 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329454636376614 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329455636933726 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329455637094161 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329455676466216 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329456462741039 | Type: container | Event: exec_create: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329456462891058 | Type: container | Event: exec_start: /bin/sh -c curl -f http://localhost:8070/api/versions || exit 1 | Name: nuclio-dashboard-test
+Time: 1771329456513226948 | Type: container | Event: exec_die | Name: nuclio-dashboard-test
+Time: 1771329456677705944 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329456677877593 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329456728570729 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329457728534439 | Type: container | Event: exec_create: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329457728702404 | Type: container | Event: exec_start: /bin/sh -c /usr/local/bin/uhttpc --url http://127.0.0.1:8082/ready || exit 1 | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329457763612732 | Type: container | Event: exec_die | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329458281701257 | Type: container | Event: exec_create: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329458281849830 | Type: container | Event: exec_start: /cerbos healthcheck | Name: compute-api-cerbos-testing
+Time: 1771329458379154553 | Type: container | Event: exec_die | Name: compute-api-cerbos-testing
+Time: 1771329458690180690 | Type: container | Event: kill | Name: nuclio-nuclio-0af8565c-bf7d-v1.1.0be0x7af83vle1cvveour71in
+Time: 1771329458886733204 | Type: container | Event: exec_create: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/* | Name: nuclio-local-storage-reader
+Time: 1771329458889867360 | Type: container | Event: exec_start: /bin/sh -c /bin/cat /etc/nuclio/store/functions/nuclio/* | Name: nuclio-local-storage-reader
+Time: 1771329458917630569 | Type: container | Event: exec_die | Name: nuclio-local-storage-reader
