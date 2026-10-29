@@ -91,6 +91,11 @@ func (suite *TestSuite) TestValidateFunctionContainersHealthiness() {
 			err = suite.DockerClient.StartService(deployResult.ContainerID)
 			suite.Require().NoError(err, "Failed to start service")
 
+			// the validation compares a snapshot of the services without waiting, so let the service recover first
+			serviceReadinessTimeout := time.Minute
+			err = suite.DockerClient.AwaitServiceHealth(deployResult.ContainerID, &serviceReadinessTimeout)
+			suite.Require().NoError(err, "Service didn't recover")
+
 			// Trigger function service healthiness validation
 			go suite.Platform.(*swarm.Platform).ValidateFunctionServiceHealthiness(suite.ctx)
 

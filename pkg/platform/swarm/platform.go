@@ -68,11 +68,19 @@ func newFunctionPlatformConfiguration(functionConfig *functionconfig.Config) (*f
 	return &newConfiguration, nil
 }
 
+// functionStore is the storage of the swarm platform, which also updates function statuses conditionally
+type functionStore interface {
+	local.Storage
+
+	// UpdateFunctionStatus writes back the function if update returns true, and never re-creates a missing function
+	UpdateFunctionStatus(meta *functionconfig.Meta, update func(function *functionconfig.ConfigWithStatus) bool) error
+}
+
 type Platform struct {
 	*abstract.Platform
 	cmdRunner      cmdrunner.CmdRunner
 	DockerClient   dockerclient.Client
-	localStore     local.Storage
+	localStore     functionStore
 	projectsClient project.Client
 }
 
@@ -827,98 +835,124 @@ func (p *Platform) SaveFunctionDeployLogs(ctx context.Context, functionName, nam
 func (p *Platform) ValidateFunctionServiceHealthiness(ctx context.Context) {
 	namespaces, err := p.GetNamespaces(ctx)
 	if err != nil {
-		p.Logger.WarnWith("Cannot not get namespaces", "err", err)
+		p.Logger.WarnWithCtx(ctx, "Failed to get namespaces", "err", err.Error())
 		return
 	}
 
+	// read the functions before taking the services snapshot, so the snapshot is never older than what it's
+	// compared with. functions changed or deleted meanwhile are left untouched by updateFunctionHealth
+	var functions []platform.Function
 	for _, namespace := range namespaces {
-
-		// get functions for that namespace
-		functions, err := p.GetFunctions(ctx, &platform.GetFunctionsOptions{
-			Namespace: namespace,
-		})
+		namespaceFunctions, err := p.localStore.GetFunctions(&functionconfig.Meta{Namespace: namespace})
 		if err != nil {
-			p.Logger.WarnWithCtx(ctx,
-				"Failed to get namespaced functions",
+			p.Logger.WarnWithCtx(ctx, "Failed to get namespaced functions",
 				"namespace", namespace,
-				"err", err)
+				"err", err.Error())
+			continue
+		}
+		functions = append(functions, namespaceFunctions...)
+	}
+
+	// a single call for all the function services
+	servicesReplicas, err := p.DockerClient.GetServicesReplicas(map[string]string{
+		"nuclio.io/platform": common.SwarmPlatformName,
+	})
+	if err != nil {
+		p.Logger.WarnWithCtx(ctx, "Failed to get function services replicas", "err", err.Error())
+		return
+	}
+
+	for _, function := range functions {
+		functionConfig := function.GetConfig()
+		functionStatus := function.GetStatus()
+		if !isFunctionHealthMonitored(functionConfig, functionStatus) {
 			continue
 		}
 
-		// check each function container healthiness and update function's status correspondingly
-		for _, function := range functions {
-			functionConfig := function.GetConfig()
-			functionStatus := function.GetStatus()
-			functionName := functionConfig.Meta.Name
+		replicas, serviceExists := servicesReplicas[p.GetFunctionServiceName(functionConfig)]
+		healthy := serviceExists && replicas.Desired > 0 && replicas.Running >= replicas.Desired
 
-			functionIsReady := functionStatus.State == functionconfig.FunctionStateReady
-			functionWasSetAsUnhealthy := functionconfig.FunctionStateInSlice(functionStatus.State,
-				[]functionconfig.FunctionState{
-					functionconfig.FunctionStateError,
-					functionconfig.FunctionStateUnhealthy,
-				}) && functionStatus.Message == string(common.FunctionStateMessageUnhealthy)
-			if !(functionIsReady || functionWasSetAsUnhealthy) || functionConfig.Spec.Disable {
+		// nothing to change
+		if healthy == (functionStatus.State == functionconfig.FunctionStateReady) {
+			continue
+		}
 
-				// cannot be monitored
-				continue
-			}
-
-			// get function container name
-			serviceName := p.GetFunctionServiceName(&functionconfig.Config{
-				Meta: functionconfig.Meta{
-					Name:      functionName,
-					Namespace: namespace,
-				},
-			})
-
-			// get function container by name
-			services, err := p.DockerClient.GetServices(&dockerclient.GetServiceOptions{
-				Name: serviceName,
-			})
-			if err != nil {
-				p.Logger.WarnWithCtx(ctx, "Failed to get services by name",
-					"err", err,
-					"containerName", serviceName)
-				continue
-			}
-
-			// if function service does not exists, mark as unhealthy
-			if len(services) == 0 {
-				p.Logger.WarnWithCtx(ctx, "No services were found", "functionName", functionName)
-
-				// no running services were found for function, set function unhealthy
-				if err := p.setFunctionUnhealthy(function); err != nil {
-					p.Logger.ErrorWithCtx(ctx, "Failed to mark a function as unhealthy",
-						"err", err,
-						"functionName", functionName,
-						"namespace", namespace)
-				}
-				continue
-			}
-
-			service := services[0]
-
-			// check ready function to ensure its tasks are healthy
-			if functionIsReady {
-				if err := p.checkAndSetFunctionUnhealthy(service.ID, function); err != nil {
-					p.Logger.ErrorWithCtx(ctx, "Failed to check a function's health and mark it as unhealthy if necessary",
-						"err", err,
-						"functionName", functionName,
-						"namespace", namespace)
-				}
-			}
-
-			// check unhealthy function to see if its service id is healthy again
-			if functionWasSetAsUnhealthy {
-				if err := p.checkAndSetFunctionHealthy(service.ID, function); err != nil {
-					p.Logger.ErrorWithCtx(ctx, "Failed to check a function's health and mark it as unhealthy if necessary",
-						"err", err,
-						"functionName", functionName,
-						"namespace", namespace)
-				}
-			}
+		if err := p.updateFunctionHealth(ctx, functionConfig, functionStatus, healthy); err != nil {
+			p.Logger.ErrorWithCtx(ctx, "Failed to update function health",
+				"functionName", functionConfig.Meta.Name,
+				"namespace", functionConfig.Meta.Namespace,
+				"healthy", healthy,
+				"err", err.Error())
 		}
 	}
+}
+
+// isFunctionHealthMonitored returns whether the healthiness validation owns the function state:
+// enabled functions that are ready, or that it marked as unhealthy
+func isFunctionHealthMonitored(functionConfig *functionconfig.Config, functionStatus *functionconfig.Status) bool {
+	if functionConfig.Spec.Disable {
+		return false
+	}
+
+	if functionStatus.State == functionconfig.FunctionStateReady {
+		return true
+	}
+
+	return functionconfig.FunctionStateInSlice(functionStatus.State,
+		[]functionconfig.FunctionState{
+			functionconfig.FunctionStateError,
+			functionconfig.FunctionStateUnhealthy,
+		}) && functionStatus.Message == string(common.FunctionStateMessageUnhealthy)
+}
+
+// updateFunctionHealth sets the function as ready or unhealthy, only if it still exists in the store with the
+// status it was evaluated from. a function deleted or redeployed since then is skipped, never re-created
+func (p *Platform) updateFunctionHealth(ctx context.Context,
+	functionConfig *functionconfig.Config,
+	evaluatedStatus *functionconfig.Status,
+	healthy bool) error {
+
+	newState := functionconfig.FunctionStateUnhealthy
+	newMessage := string(common.FunctionStateMessageUnhealthy)
+	if healthy {
+		newState = functionconfig.FunctionStateReady
+		newMessage = ""
+	}
+
+	updated := false
+	err := p.localStore.UpdateFunctionStatus(&functionConfig.Meta, func(function *functionconfig.ConfigWithStatus) bool {
+		if function.Status.State != evaluatedStatus.State ||
+			function.Status.Message != evaluatedStatus.Message ||
+			function.Spec.Disable {
+			return false
+		}
+
+		function.Status.State = newState
+		function.Status.Message = newMessage
+		updated = true
+		return true
+	})
+	if errors.Is(err, nuclio.ErrNotFound) {
+		p.Logger.DebugWithCtx(ctx, "Function was deleted, skipping its health update",
+			"functionName", functionConfig.Meta.Name,
+			"namespace", functionConfig.Meta.Namespace)
+		return nil
+	}
+	if err != nil {
+		return errors.Wrap(err, "Failed to update function status")
+	}
+
+	if updated {
+		logWithCtx := p.Logger.InfoWithCtx
+		if !healthy {
+			logWithCtx = p.Logger.WarnWithCtx
+		}
+		logWithCtx(ctx, "Updated function health",
+			"functionName", functionConfig.Meta.Name,
+			"namespace", functionConfig.Meta.Namespace,
+			"state", newState)
+	}
+	return nil
 }
 
 func (p *Platform) GetFunctionServiceName(functionConfig *functionconfig.Config) string {
@@ -1282,58 +1316,6 @@ func (p *Platform) deleteOrStopFunctionService(createFunctionOptions *platform.C
 	}
 
 	return previousHTTPPort, nil
-}
-
-func (p *Platform) checkAndSetFunctionUnhealthy(serviceID string, function platform.Function) error {
-	if err := p.DockerClient.AwaitServiceHealth(serviceID,
-		&p.Config.Local.FunctionContainersHealthinessTimeout); err != nil {
-		return p.setFunctionUnhealthy(function)
-	}
-	return nil
-}
-
-func (p *Platform) setFunctionUnhealthy(function platform.Function) error {
-	functionStatus := function.GetStatus()
-
-	// set function state to error
-	functionStatus.State = functionconfig.FunctionStateUnhealthy
-
-	// set unhealthy error message
-	functionStatus.Message = string(common.FunctionStateMessageUnhealthy)
-
-	p.Logger.WarnWith("Setting function state as unhealthy",
-		"functionName", function.GetConfig().Meta.Name,
-		"functionStatus", functionStatus)
-
-	// function service is not healthy or missing, set function state as error
-	return p.localStore.CreateOrUpdateFunction(&functionconfig.ConfigWithStatus{
-		Config: *function.GetConfig(),
-		Status: *functionStatus,
-	})
-}
-
-func (p *Platform) checkAndSetFunctionHealthy(serviceID string, function platform.Function) error {
-	if err := p.DockerClient.AwaitServiceHealth(serviceID,
-		&p.Config.Local.FunctionContainersHealthinessTimeout); err != nil {
-		return errors.Wrapf(err, "Failed to ensure the health of service ID %s", serviceID)
-	}
-	functionStatus := function.GetStatus()
-
-	// set function as ready
-	functionStatus.State = functionconfig.FunctionStateReady
-
-	// unset error message
-	functionStatus.Message = ""
-
-	p.Logger.InfoWith("Setting function state as ready",
-		"functionName", function.GetConfig().Meta.Name,
-		"functionStatus", functionStatus)
-
-	// function service is not healthy or missing, set function state as error
-	return p.localStore.CreateOrUpdateFunction(&functionconfig.ConfigWithStatus{
-		Config: *function.GetConfig(),
-		Status: *functionStatus,
-	})
 }
 
 func (p *Platform) waitForService(serviceID string, timeout int) error {

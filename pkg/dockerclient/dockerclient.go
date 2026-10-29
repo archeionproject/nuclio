@@ -133,6 +133,9 @@ type Client interface {
 	// GetServices returns a list of services which match a certain criteria
 	GetServices(*GetServiceOptions) ([]Service, error)
 
+	// GetServicesReplicas returns the running and desired replicas of the services with the given labels, by service name
+	GetServicesReplicas(labels map[string]string) (map[string]ServiceReplicas, error)
+
 	GetServicePort(service *Service, boundPort int) (int, error)
 
 	CreateConfig(name string, data string) (string, error)

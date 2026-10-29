@@ -55,6 +55,9 @@ var volumeNameRegex = regexp.MustCompile(`^\S+$`)
 // taking the loose approach,
 var envVarNameRegex = regexp.MustCompile(`^[^=]+$`)
 
+// ErrServiceNotFound is returned when the requested swarm service does not exist
+var ErrServiceNotFound = errors.New("Service not found")
+
 // ShellClient is a docker client that uses the shell to communicate with docker
 type ShellClient struct {
 	logger             logger.Logger
@@ -1085,93 +1088,197 @@ func (c *ShellClient) StartService(serviceID string) error {
 	return err
 }
 
-// AwaitServiceHealth blocks until the given container is healthy or the timeout passes
+// AwaitServiceHealth blocks until all the desired replicas of the given service are running or the timeout passes.
+// swarm reports a task as running only once its container healthcheck has passed
 func (c *ShellClient) AwaitServiceHealth(serviceID string, timeout *time.Duration) error {
 	c.logger.DebugWith("Awaiting service health", "serviceID", serviceID, "timeout", timeout)
 
-	if !containerIDRegex.MatchString(serviceID) && !restrictedNameRegex.MatchString(serviceID) {
-		return errors.New("Invalid service ID to await health for")
+	// retrying won't fix an invalid ID
+	if !containerIDRegex.MatchString(serviceID) {
+		return errors.Errorf("Invalid service ID %q to await health for", serviceID)
 	}
 
-	timedOut := false
+	// cli failures in a row tolerated before giving up (e.g. calls killed by timeout while the daemon hangs)
+	const maxConsecutiveErrors = 5
 
-	containerHealthy := make(chan error, 1)
-	var timeoutChan <-chan time.Time
-
-	// if no timeout is given, create a channel that we'll never send on
-	if timeout == nil {
-		timeoutChan = make(<-chan time.Time, 1)
-	} else {
-		timeoutChan = time.After(*timeout)
+	startedAt := time.Now()
+	var deadline time.Time
+	if timeout != nil {
+		deadline = startedAt.Add(*timeout)
 	}
 
-	go func() {
+	// last observed state, reported when the timeout passes
+	var running, desired, consecutiveErrors int
+	var lastErr error
 
-		// start with a small interval between health checks, increasing it gradually
-		inspectInterval := 100 * time.Millisecond
-
-		for !timedOut {
-			services, err := c.GetServices(&GetServiceOptions{
-				ID: serviceID,
-			})
-			if err == nil && len(services) > 0 {
-				service := services[0]
-
-				if service.DesiredReplicas == service.RunningReplicas {
-					if service.RunningReplicas == 0 {
-						containerHealthy <- errors.Errorf("Service has %d Desired running replicas and %d tasks are running, cannot be healthy", service.DesiredReplicas, service.RunningReplicas)
-						return
-					}
-
-					containerHealthy <- nil
-					return
-				}
-
-				// wait a bit before retrying
-				c.logger.DebugWith("Service not healthy yet, retrying soon",
-					"timeout", timeout,
-					"containerID", serviceID,
-					"desired replicas", service.DesiredReplicas,
-					"running replicas", service.RunningReplicas,
-					"nextCheckIn", inspectInterval)
-			}
-
-			time.Sleep(inspectInterval)
-
-			// increase the interval up to a cap
-			if inspectInterval < 800*time.Millisecond {
-				inspectInterval *= 2
-			}
-		}
-	}()
-
-	// wait for either the container to be healthy or the timeout
-	select {
-	case err := <-containerHealthy:
-		if err != nil {
+	for {
+		currentRunning, currentDesired, err := c.getServiceReplicas(serviceID)
+		switch {
+		case errors.Is(err, ErrServiceNotFound):
 			return errors.Wrapf(err, "Service %s is not healthy", serviceID)
+
+		case err != nil:
+			consecutiveErrors++
+			lastErr = err
+			if consecutiveErrors >= maxConsecutiveErrors {
+				return errors.Wrapf(err, "Failed to get service %s replicas %d times in a row", serviceID, consecutiveErrors)
+			}
+			c.logger.WarnWith("Failed to get service replicas, retrying",
+				"serviceID", serviceID,
+				"consecutiveErrors", consecutiveErrors,
+				"err", err.Error())
+
+		case currentDesired == 0:
+			return errors.Errorf("Service %s has no desired replicas, cannot be healthy", serviceID)
+
+		case currentRunning >= currentDesired:
+			c.logger.DebugWith("Service is healthy",
+				"serviceID", serviceID,
+				"runningReplicas", currentRunning,
+				"elapsed", time.Since(startedAt))
+			return nil
+
+		default:
+			running, desired = currentRunning, currentDesired
+			consecutiveErrors = 0
+			lastErr = nil
 		}
-		c.logger.DebugWith("Service is healthy", "serviceID", serviceID)
-	case <-timeoutChan:
-		timedOut = true
-		// TODO: when the image is not found the error can be found as property of the task
-		// we should find a better strategy to return the error here.
-		containerLogs, err := c.GetServiceLogs(serviceID)
-		if err != nil {
-			c.logger.ErrorWith("Container wasn't healthy within timeout (failed to get logs)",
-				"containerID", serviceID,
-				"timeout", timeout,
-				"err", err)
-		} else {
-			c.logger.WarnWith("Container wasn't healthy within timeout",
-				"containerID", serviceID,
-				"timeout", timeout,
-				"logs", containerLogs)
+
+		inspectInterval := serviceInspectInterval(time.Since(startedAt))
+		if timeout != nil {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				c.logger.WarnWith("Service wasn't healthy within timeout",
+					"serviceID", serviceID,
+					"desiredReplicas", desired,
+					"runningReplicas", running,
+					"timeout", timeout)
+				if lastErr != nil {
+					return errors.Wrap(lastErr, "Service wasn't healthy in time")
+				}
+				return errors.Errorf("Service wasn't healthy in time (%d/%d replicas running)", running, desired)
+			}
+
+			// don't sleep past the deadline, so the last poll happens right at it
+			inspectInterval = min(inspectInterval, remaining)
 		}
-		return errors.New("Service wasn't healthy in time")
+
+		c.logger.DebugWith("Service not healthy yet, retrying soon",
+			"serviceID", serviceID,
+			"desiredReplicas", desired,
+			"runningReplicas", running,
+			"nextCheckIn", inspectInterval)
+
+		time.Sleep(inspectInterval)
+	}
+}
+
+// serviceInspectInterval returns the time to wait between service health polls, given how long the wait has lasted.
+// a task turns running only after its first healthcheck passes (1s interval by default), so faster polling can't
+// detect it sooner. long waits are mostly image pulls or failing services, so polls get sparser over time
+func serviceInspectInterval(elapsed time.Duration) time.Duration {
+	switch {
+	case elapsed < 10*time.Second:
+		return time.Second
+	case elapsed < 30*time.Second:
+		return 2 * time.Second
+	default:
+		return 5 * time.Second
+	}
+}
+
+// getServiceReplicas returns the number of running and desired replicas of the service with the given ID.
+// if no service matches the ID, the returned error wraps ErrServiceNotFound
+func (c *ShellClient) getServiceReplicas(serviceID string) (running, desired int, err error) {
+	c.logger.DebugWith("Getting service replicas", "serviceID", serviceID)
+
+	if !containerIDRegex.MatchString(serviceID) {
+		return 0, 0, errors.Errorf("Invalid service ID %q", serviceID)
 	}
 
-	return nil
+	// Use `timeout` to ensure the shell kills the command if the Docker daemon hangs.
+	// This prevents CmdRunner.Run from blocking the Go loop indefinitely.
+	runResult, err := c.runCommand(nil, `timeout 5s docker service ls --filter "id=%s" --format "{{.Replicas}}"`, serviceID)
+	if err != nil {
+
+		// the wrapped error message isn't printed, so surface the cli reason (e.g. killed by timeout, not a swarm manager)
+		return 0, 0, errors.Wrapf(err, "Failed to list services (exit code %d): %s",
+			runResult.ExitCode,
+			strings.TrimSpace(runResult.Stderr))
+	}
+
+	output := strings.TrimSpace(runResult.Output)
+	if output == "" {
+		return 0, 0, errors.Wrapf(ErrServiceNotFound, "Service %s not found", serviceID)
+	}
+
+	serviceLines := strings.Split(output, "\n")
+	if len(serviceLines) > 1 {
+		return 0, 0, errors.Errorf("Service ID %s matches %d services", serviceID, len(serviceLines))
+	}
+
+	return parseServiceReplicas(serviceLines[0])
+}
+
+// GetServicesReplicas returns the running and desired replicas of the services with the given labels, by service name
+func (c *ShellClient) GetServicesReplicas(labels map[string]string) (map[string]ServiceReplicas, error) {
+	c.logger.DebugWith("Getting services replicas", "labels", labels)
+
+	var filterArguments []string
+	for labelName, labelValue := range labels {
+		filterArguments = append(filterArguments,
+			"--filter "+common.Quote(fmt.Sprintf("label=%s=%s", labelName, labelValue)))
+	}
+
+	// a single call for all the matching services. the timeout kills the cli if the daemon hangs
+	runResult, err := c.runCommand(nil,
+		`timeout 10s docker service ls %s --format "{{.Name}} {{.Replicas}}"`,
+		strings.Join(filterArguments, " "))
+	if err != nil {
+		return nil, errors.Wrapf(err, "Failed to list services (exit code %d): %s",
+			runResult.ExitCode,
+			strings.TrimSpace(runResult.Stderr))
+	}
+
+	servicesReplicas := map[string]ServiceReplicas{}
+	for _, serviceLine := range strings.Split(strings.TrimSpace(runResult.Output), "\n") {
+		if serviceLine == "" {
+			continue
+		}
+
+		// e.g. "nuclio-nuclio-hello 1/1"
+		serviceName, replicas, _ := strings.Cut(serviceLine, " ")
+		running, desired, err := parseServiceReplicas(replicas)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Failed to parse service line: %q", serviceLine)
+		}
+		servicesReplicas[serviceName] = ServiceReplicas{Running: running, Desired: desired}
+	}
+
+	return servicesReplicas, nil
+}
+
+// parseServiceReplicas parses the replicas column of `docker service ls`, formatted as "<running>/<desired>"
+// and optionally followed by details (e.g. "1/1 (max 1 per node)")
+func parseServiceReplicas(replicas string) (running, desired int, err error) {
+	replicaFields := strings.Fields(replicas)
+	if len(replicaFields) == 0 {
+		return 0, 0, errors.Errorf("Failed to parse service replicas: %q", replicas)
+	}
+
+	runningStr, desiredStr, ok := strings.Cut(replicaFields[0], "/")
+	if !ok {
+		return 0, 0, errors.Errorf("Failed to parse service replicas: %q", replicas)
+	}
+
+	if running, err = strconv.Atoi(runningStr); err != nil {
+		return 0, 0, errors.Wrapf(err, "Failed to parse running replicas: %q", replicas)
+	}
+	if desired, err = strconv.Atoi(desiredStr); err != nil {
+		return 0, 0, errors.Wrapf(err, "Failed to parse desired replicas: %q", replicas)
+	}
+
+	return running, desired, nil
 }
 
 func (c *ShellClient) GetServiceLogs(serviceID string) (string, error) {

@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/nuclio/nuclio/pkg/common"
@@ -42,6 +43,12 @@ const (
 	funcSubDir    = "functions"
 	projectSubDir = "projects"
 	eventSubDir   = "function-events"
+
+	// resources are written to ".<name>.json.tmp-<random>" first, which readers never list (they list "*.json")
+	tempFileInfix = ".json.tmp-"
+
+	// temporary files older than this are leftovers of interrupted writes, as a write takes milliseconds
+	staleTempFileAge = time.Minute
 )
 
 // LocalFileStore is a Backend implementation that reads and writes JSON files
@@ -61,6 +68,9 @@ type LocalFileStore struct {
 	logger   logger.Logger
 	platform platform.Platform
 	baseDir  string
+
+	// serializes function writes and deletes, so that UpdateFunctionStatus can't race with them
+	functionsLock sync.Mutex
 }
 
 func newLocalFileStore(parentLogger logger.Logger, pl platform.Platform) (*LocalFileStore, error) {
@@ -81,7 +91,31 @@ func (s *LocalFileStore) Initialize() (string, error) {
 			return "", errors.Wrapf(err, "Failed to create store subdirectory %s", sub)
 		}
 	}
+
+	s.removeStaleTempFiles()
 	return "", nil
+}
+
+// removeStaleTempFiles deletes the temporary files left behind by writes interrupted by a crash. fresh ones are
+// kept, as they may belong to a write in progress by another process sharing the store
+func (s *LocalFileStore) removeStaleTempFiles() {
+	paths, err := filepath.Glob(filepath.Join(s.baseDir, "*", "*", ".*"+tempFileInfix+"*"))
+	if err != nil {
+		s.logger.WarnWith("Failed to list temporary store files", "err", err.Error())
+		return
+	}
+
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil || time.Since(info.ModTime()) < staleTempFileAge {
+			continue
+		}
+		if err := os.Remove(path); err != nil {
+			s.logger.WarnWith("Failed to remove stale temporary store file", "path", path, "err", err.Error())
+			continue
+		}
+		s.logger.InfoWith("Removed stale temporary store file", "path", path)
+	}
 }
 
 // --- Project ---
@@ -180,10 +214,45 @@ func (s *LocalFileStore) DeleteFunctionEvent(meta *platform.FunctionEventMeta) e
 // --- Function ---
 
 func (s *LocalFileStore) CreateOrUpdateFunction(functionConfig *functionconfig.ConfigWithStatus) error {
+	s.functionsLock.Lock()
+	defer s.functionsLock.Unlock()
+
 	return s.writeResource(funcSubDir,
 		functionConfig.Meta.Namespace,
 		functionConfig.Meta.Name,
 		functionConfig)
+}
+
+// UpdateFunctionStatus reads a function and passes it to update, writing it back if update returns true.
+// unlike CreateOrUpdateFunction, it returns nuclio.ErrNotFound for a missing function instead of creating it,
+// and it is atomic with respect to the other function writes and deletes
+func (s *LocalFileStore) UpdateFunctionStatus(meta *functionconfig.Meta,
+	update func(function *functionconfig.ConfigWithStatus) bool) error {
+	if meta.Name == "" {
+		return errors.New("Function name is required to update its status")
+	}
+
+	s.functionsLock.Lock()
+	defer s.functionsLock.Unlock()
+
+	rows, err := s.readResources(funcSubDir, meta.Namespace, meta.Name)
+	if err != nil {
+		return errors.Wrap(err, "Failed to read function")
+	}
+	if len(rows) == 0 {
+		return nuclio.ErrNotFound
+	}
+
+	function := functionconfig.ConfigWithStatus{}
+	if err := json.Unmarshal(rows[0], &function); err != nil {
+		return errors.Wrap(err, "Failed to unmarshal function")
+	}
+
+	if !update(&function) {
+		return nil
+	}
+
+	return s.writeResource(funcSubDir, meta.Namespace, meta.Name, &function)
 }
 
 func (s *LocalFileStore) GetProjectFunctions(opts *platform.GetFunctionsOptions) ([]platform.Function, error) {
@@ -251,11 +320,17 @@ func (s *LocalFileStore) DeleteFunction(ctx context.Context, meta *functionconfi
 		return errors.Wrap(err, "Failed to delete function events")
 	}
 
+	s.functionsLock.Lock()
+	defer s.functionsLock.Unlock()
+
 	return s.deleteResource(funcSubDir, meta.Namespace, meta.Name)
 }
 
 // --- helpers ---
 
+// writeResource replaces the resource file atomically: the data is written and synced to a temporary file in the
+// same directory, which is then renamed over the resource file. readers see either the previous or the new
+// content, never a partial one, and a crash midway leaves the previous content intact
 func (s *LocalFileStore) writeResource(subDir, namespace, name string, v interface{}) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -265,7 +340,47 @@ func (s *LocalFileStore) writeResource(subDir, namespace, name string, v interfa
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return errors.Wrap(err, "Failed to create namespace directory")
 	}
-	return os.WriteFile(filepath.Join(dir, name+".json"), data, 0o644)
+
+	tempFile, err := os.CreateTemp(dir, "."+name+tempFileInfix+"*")
+	if err != nil {
+		return errors.Wrap(err, "Failed to create temporary resource file")
+	}
+	tempPath := tempFile.Name()
+
+	if err := writeAndSyncFile(tempFile, data); err != nil {
+		_ = os.Remove(tempPath)
+		return errors.Wrap(err, "Failed to write temporary resource file")
+	}
+
+	if err := os.Rename(tempPath, filepath.Join(dir, name+".json")); err != nil {
+		_ = os.Remove(tempPath)
+		return errors.Wrap(err, "Failed to replace resource file")
+	}
+
+	// persist the rename itself across a host crash. best effort, as not every platform can sync a directory
+	if dirFile, err := os.Open(dir); err == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
+	}
+
+	return nil
+}
+
+// writeAndSyncFile writes data to the file, flushes it to disk and closes the file
+func writeAndSyncFile(file *os.File, data []byte) error {
+	_, err := file.Write(data)
+	if err == nil {
+
+		// temporary files are created as 0600, resource files were always 0644
+		err = file.Chmod(0o644)
+	}
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func (s *LocalFileStore) readResources(subDir, namespace, name string) ([][]byte, error) {
@@ -328,4 +443,4 @@ func newLocalStoreFunction(parentLogger logger.Logger,
 }
 
 func (f *localStoreFunction) Initialize(context.Context, []string) error { return nil }
-func (f *localStoreFunction) GetReplicas() (int, int)                     { return 1, 1 }
+func (f *localStoreFunction) GetReplicas() (int, int)                    { return 1, 1 }

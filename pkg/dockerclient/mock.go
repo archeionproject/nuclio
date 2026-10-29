@@ -181,3 +181,8 @@ func (mdc *MockDockerClient) GetContainerLogStream(ctx context.Context,
 	args := mdc.Called(ctx, containerID, logOptions)
 	return args.Get(0).(io.ReadCloser), args.Error(1)
 }
+
+func (mdc *MockDockerClient) GetServicesReplicas(labels map[string]string) (map[string]ServiceReplicas, error) {
+	args := mdc.Called(labels)
+	return args.Get(0).(map[string]ServiceReplicas), args.Error(1)
+}

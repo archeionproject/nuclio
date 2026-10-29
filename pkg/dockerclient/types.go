@@ -159,6 +159,12 @@ type Service struct {
 	Endpoint        *Endpoint
 }
 
+// ServiceReplicas holds the number of running and desired tasks of a service
+type ServiceReplicas struct {
+	Running int
+	Desired int
+}
+
 type ServiceSpec struct {
 	Name         string
 	Labels       map[string]string
